@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+.idea/
+.zcode/
+node.zip
+# Scratch dumps from frontend source inspection
+.tmp_*
+# Session-continuity status files (kept out of git by design)
+.agents/

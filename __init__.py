@@ -1,0 +1,32 @@
+'''
+File:   __init__.py
+Brief:  ComfyUI-LukutarRetro custom node pack entry point.
+Author: Mistress-Lukutar
+Date:   2026-11-14
+Version: v0.1.0
+'''
+
+from __future__ import annotations
+
+__version__ = "0.1.0"
+
+#: Served to the ComfyUI frontend (in-node preview toggle for the filters).
+WEB_DIRECTORY = "./web"
+
+if __package__:
+    # Normal case: imported as a package (ComfyUI's custom node loader,
+    # smoke test) — relative imports resolve as usual.
+    from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+else:
+    # Imported as a bare module (e.g. pytest 9 imports the rootdir package
+    # __init__ without package context). The real node classes need torch
+    # from the ComfyUI runtime, so expose empty mappings instead of failing;
+    # ComfyUI itself never takes this branch.
+    NODE_CLASS_MAPPINGS: dict[str, type] = {}
+    NODE_DISPLAY_NAME_MAPPINGS: dict[str, str] = {}
+
+__all__ = [
+    "NODE_CLASS_MAPPINGS",
+    "NODE_DISPLAY_NAME_MAPPINGS",
+    "__version__",
+]
