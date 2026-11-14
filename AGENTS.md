@@ -9,11 +9,21 @@ per-filter parameters, and a `show_preview` BOOLEAN widget driving an
 in-node preview. Filters are non-destructive: the output IMAGE always
 carries the processed result, the preview is extra.
 
+Current state: the Pixel category is implemented (RetroPixelize,
+RetroPaletteQuantize, RetroColorDepth, RetroDither); the atomic CRT nodes
+(Scanlines, Subpixel Mask, Bloom, Chromatic Aberration, Screen Curvature,
+Vignette) and the Analog nodes (VHS, LCD Dot Matrix) are planned next.
+Per-node behavior contracts live in `README.md` — keep it in sync.
+
 ## Layout & architecture boundaries
 
 - `core/` — pure numpy + OpenCV processing engines. **No ComfyUI imports,
   no torch** — must stay importable and unit-testable on any plain
-  python that has numpy + opencv.
+  python that has numpy + opencv. Modules: `pixelize.py` (cell pooling:
+  center/mean/median/mode), `dither.py` (Bayer 2/4/8 + FS/Atkinson error
+  diffusion), `palettes.py` (10 hardware palettes + hex-string parser),
+  `quantize.py` (CIELAB nearest match via 5-bit RGB LUT + palette
+  dithering).
 - `nodes/` — ComfyUI node classes (`INPUT_TYPES`, tensor glue). `comfy`
   imports must be lazy and guarded with
   `try: from comfy... except ImportError: return None` (pattern:
@@ -55,6 +65,26 @@ ComfyUI menu categories: `Lukutar/Retro/Pixel` (pixelization/palette/
 dither nodes), `Lukutar/Retro/CRT` (atomic screen effects), 
 `Lukutar/Retro/Analog` (VHS, LCD dot matrix). Mapping keys carry the
 `Retro` prefix for cross-pack uniqueness (sibling packs share the menu).
+
+## Known implementation traps (do not regress)
+
+- Error-diffusion scan loops MUST copy the pixel before overwriting it
+  (`pixel = plane[row, col].copy()`): basic indexing returns a view, so
+  writing the matched value through it silently zeroes the diffused
+  error. Regression: `TestErrorDiffusionSpreads` in
+  `tests/unit/test_quantize.py`.
+- Clamp the quantized value to `[0, 255]` inside diffusion loops —
+  accumulated error can overshoot the outer levels and would otherwise
+  leak oversized residues into downstream pixels.
+- `folder_paths` is a TOP-LEVEL module of the ComfyUI root
+  (`import folder_paths`), never `from comfy import folder_paths`.
+  Temp files go through `folder_paths.get_save_image_path(...)` plus
+  `os.path.join(full_output_dir, filename)` (see `nodes/preview.py`).
+- The preview helper never raises — any failure logs a warning and
+  returns `[]`. Do not turn that into raising: previews must never kill
+  the filter.
+- `utils/images.py` needs torch — import it only from node modules;
+  the pytest bootstrap (`tests/conftest.py`) must never execute it.
 
 ## Commands
 
