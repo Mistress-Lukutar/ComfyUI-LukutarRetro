@@ -11,16 +11,28 @@ re-exported so the root package __init__ can forward them to ComfyUI.
 
 from __future__ import annotations
 
+from .aberration import ChromaticAberrationNode
+from .bloom import BloomNode
 from .color_depth import ColorDepthNode
+from .curvature import CurvatureNode
 from .dither import DitherNode
 from .pixelize import PixelizeNode
 from .quantize import PaletteQuantizeNode
+from .scanlines import ScanlinesNode
+from .subpixel_mask import SubpixelMaskNode
+from .vignette import VignetteNode
 
 NODE_CLASS_MAPPINGS: dict[str, type] = {
     "RetroPixelize": PixelizeNode,
     "RetroPaletteQuantize": PaletteQuantizeNode,
     "RetroColorDepth": ColorDepthNode,
     "RetroDither": DitherNode,
+    "RetroScanlines": ScanlinesNode,
+    "RetroSubpixelMask": SubpixelMaskNode,
+    "RetroBloom": BloomNode,
+    "RetroChromaticAberration": ChromaticAberrationNode,
+    "RetroCurvature": CurvatureNode,
+    "RetroVignette": VignetteNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS: dict[str, str] = {
@@ -28,6 +40,12 @@ NODE_DISPLAY_NAME_MAPPINGS: dict[str, str] = {
     "RetroPaletteQuantize": "Palette Quantize",
     "RetroColorDepth": "Color Depth",
     "RetroDither": "Dither (8-bit)",
+    "RetroScanlines": "Scanlines",
+    "RetroSubpixelMask": "Subpixel Mask",
+    "RetroBloom": "Bloom (Glow)",
+    "RetroChromaticAberration": "Chromatic Aberration",
+    "RetroCurvature": "Screen Curvature",
+    "RetroVignette": "Vignette",
 }
 
 __all__ = [
@@ -37,4 +55,10 @@ __all__ = [
     "PaletteQuantizeNode",
     "ColorDepthNode",
     "DitherNode",
+    "ScanlinesNode",
+    "SubpixelMaskNode",
+    "BloomNode",
+    "ChromaticAberrationNode",
+    "CurvatureNode",
+    "VignetteNode",
 ]

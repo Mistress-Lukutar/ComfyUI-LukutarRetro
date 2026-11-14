@@ -168,8 +168,154 @@ posterization.
 
 ### CRT (`Lukutar/Retro/CRT`)
 
-Scanlines, Subpixel Mask, Bloom (Glow), Chromatic Aberration, Screen Curvature,
-Vignette — landing in a later phase.
+CRT filter nodes — Scanlines, Subpixel Mask, Bloom (Glow), Chromatic Aberration,
+Screen Curvature, and Vignette. Each node applies one atomic screen effect to an
+IMAGE batch at its original resolution, with per-filter parameters and a built-in
+preview behind a `show_preview` toggle.
+
+#### RetroScanlines «Scanlines»
+
+Simulates the dark horizontal bands of a CRT display by dimming every *pitch* rows.
+Within each pitch-period the darkest *thickness* fraction is reduced by *strength*;
+the remaining rows pass through unchanged. The *profile* parameter selects whether
+the transition within the dark band is abrupt (**hard**) or uses a raised-cosine
+ramp (**soft**). An integer *offset* shifts the pattern phase, useful for aligning
+scanlines with an underlying pixel grid.
+
+##### Inputs / Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| image | IMAGE | — | Image to apply scanlines to. |
+| pitch | INT | 2 | Rows per scanline period (1–32, step 1). `1` = every row darkened. |
+| thickness | FLOAT | 0.5 | Fraction of the period that is darkened in [0, 1]. |
+| strength | FLOAT | 0.35 | Maximum dimming factor in [0, 1]. |
+| offset | INT | 0 | Row phase shift applied before the modulo operation (−64 to 64). |
+| profile | COMBO | hard | Brightness profile: `hard` (abrupt transition) or `soft` (raised-cosine ramp). |
+| show_preview | BOOLEAN | true | Render an in-node preview of the result. |
+
+| Name | Type | Description |
+|------|------|-------------|
+| image | IMAGE | Scanline-darkened batch at original input resolution. |
+
+#### RetroSubpixelMask «Subpixel Mask»
+
+Fakes a CRT phosphor-mask (or LCD dot-grid) structure: horizontal RGB triad
+period is `3 * pitch`, each channel only transmits light through its own vertical
+stripe(s). Overall brightness is multiplied by 3 (`MASK_BRIGHTNESS_COMPENSATION`)
+because each channel lights only one-third of the area — saturated pixels may clip.
+
+Three mask types are available: **aperture grille** (straight vertical RGB stripes),
+**shadow mask** (odd rows staggered by half a triad period, mimicking real CRT masks),
+and **slot mask** (aperture grille with every second horizontal band of height *pitch*
+dimmed to 50%, simulating slot-mask aperture plates). For clean alignment with the
+pixel grid, pair this node with **Pixelize** using a `pixel_size` that is a multiple
+of `3 * pitch`.
+
+##### Inputs / Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| image | IMAGE | — | Image to apply phosphor mask to. |
+| mask | COMBO | aperture_grille | Phosphor-mask type: `aperture_grille`, `shadow_mask`, or `slot_mask`. |
+| pitch | INT | 1 | Stripe width in pixels (1–16, step 1); RGB triad period is `3 * pitch`. |
+| show_preview | BOOLEAN | true | Render an in-node preview of the result. |
+
+| Name | Type | Description |
+|------|------|-------------|
+| image | IMAGE | Phosphor-masked batch at original input resolution. Saturated areas may clip. |
+
+#### RetroBloom «Bloom (Glow)»
+
+Extracts bright pixels above a luminance *threshold* (Rec. 601 luma, linear ramp
+to white), applies a Gaussian blur with sigma *radius*, and blends the glow back
+into the original image. The blend can be **screen** (`255 − (255 − a)(255 − b) / 255`)
+for soft additive glow or **add** for direct addition. An *intensity* multiplier
+scales the bloom contribution before blending.
+
+When `threshold >= 1.0` the bright mask is entirely zero and the node returns the
+input unchanged (early-out). The Gaussian kernel size is computed as `2 * ceil(3σ) + 1`,
+minimum 3.
+
+##### Inputs / Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| image | IMAGE | — | Image to apply bloom to. |
+| threshold | FLOAT | 0.7 | Luminance fraction ([0, 1]) above which pixels glow. `1.0` = no glow. |
+| radius | FLOAT | 8.0 | Gaussian blur sigma in pixels for the glow (0.5–100, step 0.5). |
+| intensity | FLOAT | 0.5 | Bloom contribution multiplier ([0, 4]). Scales the blurred glow before blending. |
+| blend | COMBO | screen | Blend mode: `screen` (soft additive) or `add` (direct addition). |
+| show_preview | BOOLEAN | true | Render an in-node preview of the result. |
+
+| Name | Type | Description |
+|------|------|-------------|
+| image | IMAGE | Bloom-glow batch at original input resolution. |
+
+#### RetroChromaticAberration «Chromatic Aberration»
+
+Displaces the red and blue channels relative to green (which stays fixed) using
+`cv2.remap` with linear interpolation and `BORDER_REFLECT`. Green channel is
+copied through unchanged. Two displacement modes: **linear** shifts red right by
+*amount* pixels and blue left (red fringe on the right edge of bright features,
+blue on the left); **radial** samples red outward from center (contracted toward
+center in the output) and blue inward (expanded outward), producing fringes on the
+inner/outer sides of edges respectively. `amount = 0` is identity.
+
+##### Inputs / Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| image | IMAGE | — | Image to apply chromatic aberration to. |
+| amount | FLOAT | 2.0 | Displacement magnitude in pixels ([0, 20], step 0.5). `0` = identity. |
+| mode | COMBO | radial | Displacement mode: `radial` (outward from centre) or `linear` (horizontal shift). |
+| show_preview | BOOLEAN | true | Render an in-node preview of the result. |
+
+| Name | Type | Description |
+|------|------|-------------|
+| image | IMAGE | Chromatic-aberration batch at original input resolution. |
+
+#### RetroCurvature «Screen Curvature»
+
+Simulates the convex barrel distortion of a CRT screen. Normalized coordinates
+are remapped from `center + (pos − center)` to `center + (pos − center) * (1 +
+amount * r²)` where r² is the squared normalized distance from centre. Pixels near
+the corners are pulled inward; corners fill with black (constant-border remap).
+The centre pixel is unchanged; `amount = 0` is identity.
+
+##### Inputs / Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| image | IMAGE | — | Image to apply screen curvature to. |
+| amount | FLOAT | 0.15 | Distortion strength ([0, 1], step 0.05). `0` = identity. |
+| show_preview | BOOLEAN | true | Render an in-node preview of the result. |
+
+| Name | Type | Description |
+|------|------|-------------|
+| image | IMAGE | Barrel-distorted batch at original input resolution. Corners are black. |
+
+#### RetroVignette «Vignette»
+
+Radar corner-darkening effect: computes a normalized distance *d* from the image
+centre (0 at centre, 1 at corners). Darkening begins at normalised radius *radius*,
+follows a power curve with exponent `1 + softness * 4`, and reaches maximum
+darkening of factor *strength*. Setting `radius = 1` or `strength = 0` returns the
+input unchanged.
+
+##### Inputs / Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| image | IMAGE | — | Image to apply vignette to. |
+| strength | FLOAT | 0.4 | Maximum darkening factor ([0, 1], step 0.05). `0` = no effect. |
+| radius | FLOAT | 0.8 | Normalised distance at which darkening begins ([0, 1], step 0.05). |
+| softness | FLOAT | 0.5 | Controls the steepness of the transition curve ([0, 1], step 0.05). |
+| show_preview | BOOLEAN | true | Render an in-node preview of the result. |
+
+| Name | Type | Description |
+|------|------|-------------|
+| image | IMAGE | Vignetted batch at original input resolution. |
 
 ### Analog (`Lukutar/Retro/Analog`)
 
