@@ -31,7 +31,8 @@ class CurvatureNode:
     original edges, so only the corners fall outside the source — the
     natural curvature artifact. The ``mask`` output marks the pixels that
     went black as a result (1 = fully black, fractional on the curved
-    boundary).
+    boundary). ``edge_softness`` feathers that boundary with a smooth
+    falloff of the given width instead of a hard cut.
     '''
 
     CATEGORY = "Lukutar/Retro/CRT"
@@ -58,6 +59,20 @@ class CurvatureNode:
                         "tooltip": "Distortion strength; zero is identity",
                     },
                 ),
+                "edge_softness": (
+                    "FLOAT",
+                    {
+                        "default": 0.0,
+                        "min": 0.0,
+                        "max": 32.0,
+                        "step": 0.5,
+                        "tooltip": (
+                            "Width of the smooth falloff into the black "
+                            "border, in pixels (0 = hard cut). Feathers "
+                            "the curved boundary without blurring content."
+                        ),
+                    },
+                ),
                 "show_preview": (
                     "BOOLEAN",
                     {
@@ -75,6 +90,7 @@ class CurvatureNode:
         self,
         image: torch.Tensor,
         amount: float = 0.15,
+        edge_softness: float = 0.0,
         show_preview: bool = True,
     ) -> dict:
         '''Apply barrel distortion to a batch of frames.
@@ -82,6 +98,8 @@ class CurvatureNode:
         Args:
             image: ComfyUI IMAGE batch (B, H, W, 3), float in [0, 1].
             amount: Distortion strength in [0, 1]. Zero is identity.
+            edge_softness: Width of the smooth falloff into the black
+                border, in pixels ([0, 32]). Zero is a hard cut.
             show_preview: Whether to generate in-node preview images.
 
         Returns:
@@ -96,13 +114,14 @@ class CurvatureNode:
         out: list[np.ndarray] = []
         black_masks: list[np.ndarray] = []
         for frame in frames:
-            warped, black = curvature(frame, amount)
+            warped, black = curvature(frame, amount, edge_softness)
             out.append(warped)
             black_masks.append(black)
         logger.info(
-            "Curvature: %d frame(s) processed (amount=%.2f)",
+            "Curvature: %d frame(s) processed (amount=%.2f, softness=%.1f)",
             len(out),
             amount,
+            edge_softness,
         )
         return build_output_payload(
             out,

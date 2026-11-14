@@ -9,6 +9,7 @@ Version: v0.1.0
 
 from __future__ import annotations
 
+import cv2
 import numpy as np
 import pytest
 from comfyui_lukutar_retro.core.crt import (
@@ -537,6 +538,75 @@ class TestCurvature:
         """amount=1.5 → ValueError."""
         with pytest.raises(ValueError):
             curvature(_gradient_frame(), amount=1.5)
+
+    def test_curvature_invalid_softness_negative(self) -> None:
+        """edge_softness=-1 → ValueError."""
+        with pytest.raises(ValueError):
+            curvature(_gradient_frame(), amount=0.4, edge_softness=-1.0)
+
+    def test_curvature_softness_zero_matches_constant_border(self) -> None:
+        """edge_softness=0 is identical to the hard constant-border cut.
+
+        The clamped-border remap multiplied by the hard bilinear
+        coverage must reproduce the BORDER_CONSTANT remap exactly.
+        """
+        frame = _gradient_frame(h=32, w=48)
+        amount = 0.4
+        result, _ = curvature(frame, amount=amount, edge_softness=0.0)
+
+        # Independent reference: straight BORDER_CONSTANT remap.
+        h, w = frame.shape[:2]
+        cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
+        xx, yy = np.meshgrid(
+            np.arange(w, dtype=np.float64), np.arange(h, dtype=np.float64)
+        )
+        u = (xx - cx) / cx
+        v = (yy - cy) / cy
+        scale = (1.0 + amount * (u * u + v * v)) / (1.0 + amount)
+        src_x = cx + (xx - cx) * scale
+        src_y = cy + (yy - cy) * scale
+        ref = np.zeros_like(frame, dtype=np.float64)
+        for ch in range(3):
+            ref[:, :, ch] = cv2.remap(
+                frame[:, :, ch],
+                src_x.astype(np.float32),
+                src_y.astype(np.float32),
+                interpolation=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=0.0,
+            )
+        ref = np.clip(ref, 0, 255).astype(np.float32)
+
+        assert np.allclose(result, ref, atol=1e-3)
+
+    def test_curvature_softness_feathers_boundary(self) -> None:
+        """edge_softness>0 widens the fade band and shrinks the black area."""
+        frame = _gradient_frame(h=64, w=64)
+
+        hard, hard_mask = curvature(frame, amount=0.4, edge_softness=0.0)
+        soft, soft_mask = curvature(frame, amount=0.4, edge_softness=6.0)
+
+        hard_black = (hard_mask == 1.0).mean()
+        soft_black = (soft_mask == 1.0).mean()
+        assert soft_black < hard_black
+        # The fractional (feather) band is wider than the hard 1 px ramp
+        assert ((soft_mask > 0.0) & (soft_mask < 1.0)).sum() > (
+            (hard_mask > 0.0) & (hard_mask < 1.0)
+        ).sum()
+        # Fully blackened pixels really are black
+        assert np.allclose(soft[soft_mask == 1.0], 0.0)
+
+    def test_curvature_softness_keeps_interior(self) -> None:
+        """edge_softness>0 leaves pixels away from the border untouched."""
+        frame = _gradient_frame(h=64, w=64)
+        hard, _ = curvature(frame, amount=0.4, edge_softness=0.0)
+        soft, _ = curvature(frame, amount=0.4, edge_softness=6.0)
+
+        # Interior crop: every pixel ≥ 6 px inside the frame edge is
+        # untouched by the feather.
+        interior = (slice(8, 56), slice(8, 56))
+        assert np.allclose(soft[interior], hard[interior])
+        assert np.allclose(soft[32, 32], hard[32, 32])
 
 
 # ---------------------------------------------------------------------------

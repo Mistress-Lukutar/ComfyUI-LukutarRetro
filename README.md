@@ -296,12 +296,24 @@ curvature artifact, constant-border remap). The centre pixel is unchanged;
 |------|------|---------|-------------|
 | image | IMAGE | — | Image to apply screen curvature to. |
 | amount | FLOAT | 0.15 | Distortion strength ([0, 1], step 0.05). `0` = identity. |
+| edge_softness | FLOAT | 0.0 | Width of the smooth falloff into the black border, in pixels ([0, 32], step 0.5). `0` = hard cut. |
 | show_preview | BOOLEAN | true | Render an in-node preview of the result. |
 
 | Name | Type | Description |
 |------|------|-------------|
 | image | IMAGE | Barrel-distorted batch at original input resolution. Corners are black. |
-| mask | MASK | The pixels that went black from the distortion: `1` = fully black, `0` = untouched content, fractional on the curved boundary (bilinear coverage of the remap sample). Shape (B, H, W), float32. |
+| mask | MASK | The pixels that went black from the distortion: `1` = fully black, `0` = untouched content, fractional on the curved boundary. Shape (B, H, W), float32. |
+
+**Edge feathering.** `edge_softness` widens the darkening ramp at the curved
+black boundary to a smoothstep of the given width (in source pixels). The
+image itself is never blurred: content is remapped with clamped border
+extension and multiplied by the feathered alpha, so the interior stays
+sharp and the black region keeps its shape — the fade just becomes gradual,
+like the glass-edge falloff of a real tube. At `edge_softness = 0` the node
+is bit-identical to the hard constant-border cut. The ramp is defined in
+source coordinates, so under the distortion it compresses where the remap
+derivative is large (near the corners) and stays ~`edge_softness` px at the
+edge midpoints. The `mask` output follows the feather (`1 − alpha`).
 
 #### RetroVignette «Vignette»
 

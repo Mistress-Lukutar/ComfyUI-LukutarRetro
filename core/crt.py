@@ -430,6 +430,7 @@ def _build_radial_maps(
 def curvature(
     frame: np.ndarray,
     amount: float = 0.15,
+    edge_softness: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Apply a barrel-distortion (CRT screen curve) to *frame*.
 
@@ -443,23 +444,34 @@ def curvature(
     as straight black bands; with it only the corners can go black —
     the natural curvature artifact.
 
+    The black edge can be feathered with *edge_softness*: instead of
+    blurring the image (which would smear content into the black region
+    and black into the content), the alpha ramp that darkens the border
+    is widened to a smoothstep of the given width in source pixels. The
+    remap then uses clamped border extension so there is real content
+    under the wider ramp to fade out; at ``edge_softness == 0`` the
+    result is bit-identical to the hard constant-border cut.
+
     Args:
         frame: HWC float32 [0, 255] RGB image.
         amount: Distortion strength in ``[0, 1]``. Zero is identity.
+        edge_softness: Width of the smooth falloff into the black
+            border, in source pixels (``>= 0``). Zero is a hard cut.
 
     Returns:
         Tuple ``(result, mask)``. ``result`` is the processed frame with
         the same shape/dtype as the input. ``mask`` is a single-channel
         (H, W) float32 map of the blackened pixels: ``1.0`` where the
-        distorted sample fell completely outside the source (constant
-        black border), ``0.0`` where content is untouched, fractional on
-        the curved boundary (the bilinear coverage of the remap sample).
+        pixel is fully black, ``0.0`` where content is untouched,
+        fractional on the (feathered) curved boundary.
 
     Raises:
         ValueError: On invalid parameters.
     """
     if amount < 0 or amount > 1:
         raise ValueError("amount must be in [0, 1]")
+    if edge_softness < 0:
+        raise ValueError("edge_softness must be >= 0")
 
     h, w, _ = frame.shape
 
@@ -485,6 +497,10 @@ def curvature(
     src_x = cx + (xx - cx) * scale
     src_y = cy + (yy - cy) * scale
 
+    # Clamped border extension: real (edge-smeared) content under the
+    # feather ramp instead of instant black. At softness = 0 the alpha
+    # below reproduces the constant-border behaviour exactly, so the
+    # border mode is safe to keep clamped in both cases.
     result = np.zeros((h, w, 3), dtype=np.float64)
     for ch in range(3):
         result[:, :, ch] = cv2.remap(
@@ -492,17 +508,45 @@ def curvature(
             src_x.astype(np.float32),
             src_y.astype(np.float32),
             interpolation=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=0.0,
+            borderMode=cv2.BORDER_REPLICATE,
         )
 
-    # Blackened-pixel mask: with the constant black border, a remap
-    # sample keeps exactly the total weight of its in-bounds bilinear
-    # taps — so 1 - coverage is the blackening fraction of the pixel.
-    coverage = _bilinear_coverage(src_x, w) * _bilinear_coverage(src_y, h)
-    mask = (1.0 - coverage).astype(np.float32)
+    # Border alpha: total valid content weight at each sample — the hard
+    # 1 px bilinear ramp, or a smoothstep widened to edge_softness px.
+    alpha = _edge_alpha(src_x, w, edge_softness) * _edge_alpha(src_y, h, edge_softness)
+    result *= alpha[:, :, np.newaxis]
+
+    # Blackened-pixel mask: 1 - alpha is the blackening fraction.
+    mask = (1.0 - alpha).astype(np.float32)
 
     return np.clip(result, 0, 255).astype(np.float32), mask
+
+
+def _edge_alpha(src: np.ndarray, n: int, softness: float) -> np.ndarray:
+    """Per-axis alpha of valid content at remap samples along one axis.
+
+    Args:
+        src: Array of sample coordinates (pixel centres at ``0..n-1``).
+        n: Number of pixels along the axis.
+        softness: Feather width in pixels; ``0`` gives the hard 1 px
+            bilinear ramp of :func:`_bilinear_coverage`.
+
+    Returns:
+        Array of per-sample alpha fractions in ``[0, 1]``.
+    """
+    if softness <= 0.0:
+        return _bilinear_coverage(src, n)
+
+    # Signed distance to the nearest frame edge (pixel centres at
+    # 0 .. n-1): positive inside, negative outside. The smoothstep ramp
+    # is symmetric about the edge — black at softness/2 outside, full
+    # content at softness/2 inside. Defined in source coordinates, so
+    # under the distortion the ramp compresses where the remap derivative
+    # is large (near the corners) and stays ~softness px at the edge
+    # midpoints — no grey mush even on 1-2 px wedges.
+    dist = np.minimum(src, (n - 1) - src)
+    t = np.clip((dist + softness * 0.5) / softness, 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
 
 
 def _bilinear_coverage(src: np.ndarray, n: int) -> np.ndarray:
@@ -510,9 +554,8 @@ def _bilinear_coverage(src: np.ndarray, n: int) -> np.ndarray:
 
     For an INTER_LINEAR remap sample at coordinate ``s`` (pixel centres
     at ``0 .. n - 1``) cv2 blends the two nearest taps with weights
-    ``(1 - frac, frac)``; out-of-bounds taps are replaced by the border
-    value. The valid weight sum is exactly how much real content
-    survives at this pixel.
+    ``(1 - frac, frac)``. The valid weight sum is exactly how much real
+    content survives at this pixel when the border is clamped.
 
     Args:
         src: Array of sample coordinates (any shape).

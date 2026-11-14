@@ -339,11 +339,12 @@ def main() -> None:
     assert "images" in payload_ab["ui"]
     print("  PASS")
 
-    # --- RetroCurvature: amount=0.15 ---
+    # --- RetroCurvature: amount=0.15, edge_softness=2.0 ---
     print("--- Check d9: RetroCurvature end-to-end ---")
     payload_cv = curvature_node.apply_curvature(
         image=batch,
         amount=0.15,
+        edge_softness=2.0,
         show_preview=True,
     )
     assert isinstance(payload_cv, dict) and "result" in payload_cv
