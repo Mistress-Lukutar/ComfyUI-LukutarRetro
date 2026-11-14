@@ -16,10 +16,12 @@ from .bloom import BloomNode
 from .color_depth import ColorDepthNode
 from .curvature import CurvatureNode
 from .dither import DitherNode
+from .lcd_dot_matrix import LcdDotMatrixNode
 from .pixelize import PixelizeNode
 from .quantize import PaletteQuantizeNode
 from .scanlines import ScanlinesNode
 from .subpixel_mask import SubpixelMaskNode
+from .vhs import VhsNode
 from .vignette import VignetteNode
 
 NODE_CLASS_MAPPINGS: dict[str, type] = {
@@ -33,6 +35,8 @@ NODE_CLASS_MAPPINGS: dict[str, type] = {
     "RetroChromaticAberration": ChromaticAberrationNode,
     "RetroCurvature": CurvatureNode,
     "RetroVignette": VignetteNode,
+    "RetroVHS": VhsNode,
+    "RetroLCDDotMatrix": LcdDotMatrixNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS: dict[str, str] = {
@@ -46,6 +50,8 @@ NODE_DISPLAY_NAME_MAPPINGS: dict[str, str] = {
     "RetroChromaticAberration": "Chromatic Aberration",
     "RetroCurvature": "Screen Curvature",
     "RetroVignette": "Vignette",
+    "RetroVHS": "VHS (Analog)",
+    "RetroLCDDotMatrix": "LCD Dot Matrix",
 }
 
 __all__ = [
@@ -61,4 +67,6 @@ __all__ = [
     "ChromaticAberrationNode",
     "CurvatureNode",
     "VignetteNode",
+    "VhsNode",
+    "LcdDotMatrixNode",
 ]

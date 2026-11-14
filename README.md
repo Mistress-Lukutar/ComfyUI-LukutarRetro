@@ -319,7 +319,81 @@ input unchanged.
 
 ### Analog (`Lukutar/Retro/Analog`)
 
-VHS, LCD Dot Matrix — landing in a later phase.
+VHS degradation and LCD dot-matrix overlay nodes. Each node applies one
+analog-style effect to an `IMAGE` batch at its original resolution, with
+per-filter parameters and a built-in preview behind a `show_preview` toggle.
+
+#### RetroVHS «VHS (Analog)»
+
+Applies four degradation stages in sequence (each skipped when its strength is
+0): chroma bleed, horizontal jitter, additive noise, and rolling-band brightening.
+
+**Chroma bleed.** Converts to YUV, box-blurs the U/V planes horizontally with a
+kernel width proportional to *chroma_bleed* (range 3–15, odd), then blends back to
+RGB. Luma is preserved through this stage.
+
+**Jitter.** Each row is shifted by a random integer horizontal offset using edge
+replication (no wrap-around). Maximum amplitude = *jitter* × 6 px.
+
+**Noise.** Additive Gaussian noise with sigma = *noise* × 40. `mono` mode uses a
+single shared noise plane across all channels; `color` generates independent noise
+per channel.
+
+**Band.** Multiplicative vertical brightening band: a Gaussian profile centered at a
+random row position (drawn from the same RNG as jitter and noise). Only brightens,
+never darkens.
+
+The *seed* parameter controls randomness: `0` = fresh random seed every run; > 0 =
+deterministic per frame for that seed value.
+
+##### Inputs / Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| image | IMAGE | — | Image to apply VHS degradation to. |
+| noise | FLOAT | 0.15 | Noise amplitude in [0, 1] (sigma = noise * 40). |
+| chroma_bleed | FLOAT | 0.5 | U/V chroma blur amount in [0, 1]. Kernel width = round(chroma_bleed * 15), clamped to [3, 15], forced odd. |
+| jitter | FLOAT | 0.3 | Horizontal row-shift amplitude in [0, 1] (max = jitter * 6 px). |
+| band | FLOAT | 0.3 | Rolling-band brightening strength in [0, 1]. Gaussian profile, only brightens. |
+| seed | INT | 0 | Random seed (0 = fresh randomness each run; > 0 = deterministic for that seed). Range: 0–2147483647. |
+| noise_mode | COMBO | color | Noise colouring: `mono` (shared plane) or `color` (independent per channel). |
+| show_preview | BOOLEAN | true | Render an in-node preview of the result. |
+
+| Name | Type | Description |
+|------|------|-------------|
+| image | IMAGE | Degraded batch at original input resolution. |
+
+#### RetroLCDDotMatrix «LCD Dot Matrix»
+
+Overlays a dot-matrix LCD pattern on the image at its current resolution. Each
+`cell_size`-pixel block is treated as a "dot": pixels inside the active region keep
+full brightness, pixels in the gap are darkened by factor `(1 - grid_dark)`.
+
+**Square shape.** The active region is a rectangle defined by *gap_ratio*: within each
+cell the normalized local coordinates must satisfy `gap_ratio/2 <= coord <= 1 -
+gap_ratio/2` on both axes.
+
+**Round shape.** The active region is a circle with normalised radius `<= 1 - gap_ratio`,
+computed from fractional coordinates centred at 0 in range [-1, 1].
+
+When *gap_ratio* = 0 or *grid_dark* = 0 the overlay is identity (no visible change).
+Pair with **Pixelize** by setting `cell_size` equal to Pixelize's `pixel_size` for
+matching pitch.
+
+##### Inputs / Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| image | IMAGE | — | Image to apply dot-matrix overlay to. |
+| cell_size | INT | 8 | Side length of each dot cell in pixels (1–64, step 1). |
+| gap_ratio | FLOAT | 0.15 | Fractional gap around the active region in [0, 0.5]. `0` = identity. |
+| grid_dark | FLOAT | 0.6 | Darkening factor for gap pixels in [0, 1]. `0` = no darkening; `1` = fully dark gaps. |
+| shape | COMBO | square | Dot shape: `square` or `round`. |
+| show_preview | BOOLEAN | true | Render an in-node preview of the result. |
+
+| Name | Type | Description |
+|------|------|-------------|
+| image | IMAGE | Dot-matrix-overlay batch at original input resolution. |
 
 ## Preview
 

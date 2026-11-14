@@ -11,6 +11,14 @@ node modules import from the package root (mirrors the sibling packs).
 
 from __future__ import annotations
 
+from .analog import (
+    DOT_SHAPES,
+    NOISE_MODES,
+    SHAPE_ROUND,
+    SHAPE_SQUARE,
+    lcd_dot_matrix,
+    vhs,
+)
 from .crt import (
     ABERRATION_LINEAR,
     ABERRATION_MODES,
@@ -122,4 +130,11 @@ __all__ = [
     "scanlines",
     "subpixel_mask",
     "vignette",
+    # analog
+    "DOT_SHAPES",
+    "NOISE_MODES",
+    "SHAPE_ROUND",
+    "SHAPE_SQUARE",
+    "vhs",
+    "lcd_dot_matrix",
 ]

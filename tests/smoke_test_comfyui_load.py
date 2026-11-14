@@ -3,7 +3,7 @@ File:   smoke_test_comfyui_load.py
 Brief:  Simulates ComfyUI custom node loading without launching the server.
 Author: Mistress-Lukutar
 Date:   2026-11-14
-Version: v0.2.0
+Version: v0.3.0
 
 Run with ComfyUI's own python (no server launch required):
 
@@ -130,6 +130,8 @@ def main() -> None:
         "RetroChromaticAberration",
         "RetroCurvature",
         "RetroVignette",
+        "RetroVHS",
+        "RetroLCDDotMatrix",
     }
     assert set(mappings.keys()) == expected_class_keys, (
         f"NODE_CLASS_MAPPINGS keys mismatch: {set(mappings.keys())}"
@@ -148,6 +150,8 @@ def main() -> None:
         "RetroChromaticAberration": "Chromatic Aberration",
         "RetroCurvature": "Screen Curvature",
         "RetroVignette": "Vignette",
+        "RetroVHS": "VHS (Analog)",
+        "RetroLCDDotMatrix": "LCD Dot Matrix",
     }
     assert display == expected_display, (
         f"NODE_DISPLAY_NAME_MAPPINGS mismatch: {display}"
@@ -198,6 +202,8 @@ def main() -> None:
     aberration_node = mappings["RetroChromaticAberration"]()
     curvature_node = mappings["RetroCurvature"]()
     vignette_node = mappings["RetroVignette"]()
+    vhs_node = mappings["RetroVHS"]()
+    lcd_node = mappings["RetroLCDDotMatrix"]()
 
     expected_shape = (2, 72, 96, 3)
 
@@ -363,6 +369,42 @@ def main() -> None:
     assert "images" in payload_vg["ui"]
     print("  PASS")
 
+    # --- RetroVHS: noise, chroma_bleed, jitter, band, seed=42 (deterministic) ---
+    print("--- Check d11: RetroVHS end-to-end ---")
+    payload_vhs = vhs_node.apply_vhs(
+        image=batch,
+        noise=0.15,
+        chroma_bleed=0.5,
+        jitter=0.3,
+        band=0.3,
+        seed=42,
+        noise_mode="color",
+        show_preview=True,
+    )
+    assert isinstance(payload_vhs, dict) and "result" in payload_vhs
+    assert isinstance(payload_vhs["result"], tuple) and len(payload_vhs["result"]) == 1
+    _check_image_tensor(payload_vhs["result"][0], expected_shape)
+    assert isinstance(payload_vhs.get("ui"), dict)
+    assert "images" in payload_vhs["ui"]
+    print("  PASS")
+
+    # --- RetroLCDDotMatrix: cell_size=8, gap_ratio=0.15, grid_dark=0.6 ---
+    print("--- Check d12: RetroLCDDotMatrix end-to-end ---")
+    payload_lcd = lcd_node.apply_dot_matrix(
+        image=batch,
+        cell_size=8,
+        gap_ratio=0.15,
+        grid_dark=0.6,
+        shape="square",
+        show_preview=True,
+    )
+    assert isinstance(payload_lcd, dict) and "result" in payload_lcd
+    assert isinstance(payload_lcd["result"], tuple) and len(payload_lcd["result"]) == 1
+    _check_image_tensor(payload_lcd["result"][0], expected_shape)
+    assert isinstance(payload_lcd.get("ui"), dict)
+    assert "images" in payload_lcd["ui"]
+    print("  PASS")
+
     # ------------------------------------------------------------------ #
     # e) Preview file check (best effort)                                 #
     # ------------------------------------------------------------------ #
@@ -408,9 +450,9 @@ def main() -> None:
         sys.path.remove(str(COMFYUI_ROOT))
 
     # ------------------------------------------------------------------ #
-    # f) Chained sanity: Pixelize -> Scanlines -> Quantize                #
+    # f) Chained sanity: Pixelize -> Scanlines -> VHS -> Quantize         #
     # ------------------------------------------------------------------ #
-    print("--- Check f: chained Pixelize -> Scanlines -> Quantize ---")
+    print("--- Check f: chained Pixelize -> Scanlines -> VHS -> Quantize ---")
 
     chained_px = pixelize_node.pixelize(
         image=batch,
@@ -428,8 +470,18 @@ def main() -> None:
         profile="hard",
         show_preview=True,
     )
-    chained_qz = quantize_node.quantize(
+    chained_vhs = vhs_node.apply_vhs(
         image=chained_sl["result"][0],
+        noise=0.15,
+        chroma_bleed=0.5,
+        jitter=0.3,
+        band=0.3,
+        seed=42,
+        noise_mode="color",
+        show_preview=True,
+    )
+    chained_qz = quantize_node.quantize(
+        image=chained_vhs["result"][0],
         palette="dmg_4",
         custom_palette="",
         dither="none",
@@ -444,7 +496,7 @@ def main() -> None:
     # g) Summary                                                          #
     # ------------------------------------------------------------------ #
     print()
-    print("SMOKE PASS: all checks passed — pack loads, nodes execute, "
+    print("SMOKE PASS: all checks passed — pack loads, 12 nodes execute, "
           "preview files written, chain works")
 
 
