@@ -347,8 +347,14 @@ def main() -> None:
         show_preview=True,
     )
     assert isinstance(payload_cv, dict) and "result" in payload_cv
-    assert isinstance(payload_cv["result"], tuple) and len(payload_cv["result"]) == 1
+    assert isinstance(payload_cv["result"], tuple) and len(payload_cv["result"]) == 2
     _check_image_tensor(payload_cv["result"][0], expected_shape)
+    mask_t = payload_cv["result"][1]
+    assert mask_t.shape == (batch.shape[0], batch.shape[1], batch.shape[2]), (
+        f"MASK shape mismatch: {mask_t.shape}"
+    )
+    assert mask_t.dtype == torch.float32
+    assert bool((mask_t >= 0.0).all()) and bool((mask_t <= 1.0).all())
     assert isinstance(payload_cv.get("ui"), dict)
     assert "images" in payload_cv["ui"]
     print("  PASS")

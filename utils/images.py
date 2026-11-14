@@ -50,3 +50,19 @@ def frames_to_tensor(frames: list[np.ndarray]) -> torch.Tensor:
         / 255.0
     )
     return torch.from_numpy(stacked)
+
+
+def frames_to_mask_tensor(masks: list[np.ndarray]) -> torch.Tensor:
+    '''Convert numpy masks into a ComfyUI MASK tensor.
+
+    Args:
+        masks: List of B masks, HW float32, values in ``[0, 1]``
+            (``1`` = masked).
+
+    Returns:
+        Tensor of shape (B, H, W), float32 in [0, 1], on CPU.
+    '''
+    stacked = np.stack(
+        [np.clip(mask, 0.0, 1.0).astype(np.float32) for mask in masks]
+    ).astype(np.float32)
+    return torch.from_numpy(stacked)

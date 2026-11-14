@@ -120,7 +120,11 @@ def save_preview_files(frames: list[np.ndarray]) -> list[dict[str, str]]:
         return []
 
 
-def build_output_payload(frames: list[np.ndarray], show_preview: bool = True) -> dict:
+def build_output_payload(
+    frames: list[np.ndarray],
+    show_preview: bool = True,
+    extra_result: tuple = (),
+) -> dict:
     """Build the uniform OUTPUT_NODE return payload.
 
     Args:
@@ -128,12 +132,15 @@ def build_output_payload(frames: list[np.ndarray], show_preview: bool = True) ->
         show_preview: When False, no preview PNGs are generated and the
             ui payload carries an empty image list — the frontend clears
             any previously shown preview on the next execution.
+        extra_result: Additional output tensors appended to the result
+            tuple after the IMAGE (e.g. a MASK output).
 
     Returns:
-        Dict with ``"ui": {"images": [...]}`` and ``"result": (IMAGE_tensor,)``.
+        Dict with ``"ui": {"images": [...]}`` and
+        ``"result": (IMAGE_tensor, *extra_result)``.
     """
     ui_images = save_preview_files(frames) if show_preview else []
     return {
         "ui": {"images": ui_images},
-        "result": (frames_to_tensor(frames),),
+        "result": (frames_to_tensor(frames), *extra_result),
     }

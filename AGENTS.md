@@ -6,8 +6,10 @@ color-palette & bit-depth restriction with dithering, and CRT/analog-video
 artifacts. Every filter node has the same shape: `IMAGE` in → `IMAGE` out
 (batch preserved, resolution preserved unless the filter is geometric),
 per-filter parameters, and a `show_preview` BOOLEAN widget driving an
-in-node preview. Filters are non-destructive: the output IMAGE always
-carries the processed result, the preview is extra.
+in-node preview. Sole exception: RetroCurvature additionally outputs a
+`MASK` marking the pixels blackened by the distortion. Filters are
+non-destructive: the output IMAGE always carries the processed result,
+the preview is extra.
 
 Current state: ALL 12 nodes are implemented — Pixel (RetroPixelize,
 RetroPaletteQuantize, RetroColorDepth, RetroDither), CRT (RetroScanlines,

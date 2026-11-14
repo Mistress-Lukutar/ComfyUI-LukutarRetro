@@ -282,9 +282,13 @@ inner/outer sides of edges respectively. `amount = 0` is identity.
 
 Simulates the convex barrel distortion of a CRT screen. Normalized coordinates
 are remapped from `center + (pos − center)` to `center + (pos − center) * (1 +
-amount * r²)` where r² is the squared normalized distance from centre. Pixels near
-the corners are pulled inward; corners fill with black (constant-border remap).
-The centre pixel is unchanged; `amount = 0` is identity.
+amount * r²)` where r² is the squared normalized distance from centre. The
+sampling coordinates are compensated by `1 / (1 + amount)` (zoom
+compensation): the midpoints of all four frame edges sample exactly the
+original edge pixels, so no straight black bands appear along the borders —
+only the corners fall outside the source and fill with black (the natural
+curvature artifact, constant-border remap). The centre pixel is unchanged;
+`amount = 0` is identity.
 
 ##### Inputs / Parameters
 
@@ -297,6 +301,7 @@ The centre pixel is unchanged; `amount = 0` is identity.
 | Name | Type | Description |
 |------|------|-------------|
 | image | IMAGE | Barrel-distorted batch at original input resolution. Corners are black. |
+| mask | MASK | The pixels that went black from the distortion: `1` = fully black, `0` = untouched content, fractional on the curved boundary (bilinear coverage of the remap sample). Shape (B, H, W), float32. |
 
 #### RetroVignette «Vignette»
 

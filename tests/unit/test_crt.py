@@ -471,10 +471,11 @@ class TestCurvature:
     """Tests for the curvature function."""
 
     def test_curvature_amount_zero_identity(self) -> None:
-        """amount=0 → identity."""
+        """amount=0 → identity, empty mask."""
         frame = _gradient_frame()
-        result = curvature(frame, amount=0.0)
+        result, mask = curvature(frame, amount=0.0)
         assert np.array_equal(result, frame)
+        assert np.all(mask == 0.0)
 
     def test_curvature_center_unchanged(self) -> None:
         """Exact center pixel unchanged for any non-zero amount."""
@@ -482,20 +483,55 @@ class TestCurvature:
         cx, cy = w // 2, h // 2
         frame = _gradient_frame(h=h, w=w)
 
-        result = curvature(frame, amount=0.4)
+        result, mask = curvature(frame, amount=0.4)
         assert np.allclose(result[cy, cx], frame[cy, cx])
+        assert mask[cy, cx] == 0.0
+
+    def test_curvature_edge_midpoints_preserved(self) -> None:
+        """Regression: no straight black bands along the frame edges.
+
+        The 1/(1 + amount) zoom compensation must make the midpoints of
+        all four edges sample exactly the original edge pixels.
+        """
+        h, w = 9, 15  # odd dims → exact edge midpoints exist
+        frame = _gradient_frame(h=h, w=w)
+        cy = h // 2
+        cx = w // 2
+
+        result, mask = curvature(frame, amount=0.4)
+        assert np.allclose(result[cy, 0], frame[cy, 0])  # left
+        assert np.allclose(result[cy, w - 1], frame[cy, w - 1])  # right
+        assert np.allclose(result[0, cx], frame[0, cx])  # top
+        assert np.allclose(result[h - 1, cx], frame[h - 1, cx])  # bottom
+        assert mask[cy, 0] == 0.0
+        assert mask[0, cx] == 0.0
 
     def test_curvature_corner_black(self) -> None:
         """Corner pixel (0, 0) is black (source outside frame)."""
         frame = _gradient_frame()
-        result = curvature(frame, amount=0.4)
+        result, mask = curvature(frame, amount=0.4)
         assert np.allclose(result[0, 0], 0.0)
+        assert mask[0, 0] == 1.0
+
+    def test_curvature_mask_range_and_center(self) -> None:
+        """Mask is float32, [0, 1], zero at the centre, positive near corner."""
+        frame = _gradient_frame(h=32, w=32)
+        result, mask = curvature(frame, amount=0.4)
+
+        assert mask.dtype == np.float32
+        assert mask.shape == frame.shape[:2]
+        assert np.all(mask >= 0.0) and np.all(mask <= 1.0)
+        assert mask[16, 16] == 0.0
+        assert mask[1, 1] > 0.0
+        # Blackened pixels really are black
+        assert np.allclose(result[mask == 1.0], 0.0)
 
     def test_curvature_shape_preserved(self) -> None:
         """Output shape matches input."""
         frame = _gradient_frame()
-        result = curvature(frame, amount=0.4)
+        result, mask = curvature(frame, amount=0.4)
         assert result.shape == frame.shape
+        assert mask.shape == frame.shape[:2]
 
     def test_curvature_invalid_amount_over_one(self) -> None:
         """amount=1.5 → ValueError."""
@@ -599,10 +635,13 @@ class TestAllFunctionsShapeDtypeRange:
     def test_curvature_shape_dtype_range(self) -> None:
         """curvature on random frame → shape/dtype/range correct."""
         frame = self._random_frame()
-        result = curvature(frame, amount=0.4)
+        result, mask = curvature(frame, amount=0.4)
         assert result.shape == frame.shape
         assert result.dtype == np.float32
         assert np.all(result >= 0) and np.all(result <= 255)
+        assert mask.shape == frame.shape[:2]
+        assert mask.dtype == np.float32
+        assert np.all(mask >= 0.0) and np.all(mask <= 1.0)
 
     def test_vignette_shape_dtype_range(self) -> None:
         """vignette on random frame → shape/dtype/range correct."""

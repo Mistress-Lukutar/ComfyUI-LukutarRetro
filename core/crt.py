@@ -6,7 +6,8 @@ Author: Mistress-Lukutar
 Date:   2026-11-14
 Version: v0.1.0
 
-Frames are ``HWC float32 [0, 255] RGB``; output has the same shape/dtype.
+Frames are ``HWC float32 [0, 255] RGB``; output has the same shape/dtype
+(:func:`curvature` additionally returns a blackened-pixel mask).
 '''
 
 from __future__ import annotations
@@ -429,18 +430,30 @@ def _build_radial_maps(
 def curvature(
     frame: np.ndarray,
     amount: float = 0.15,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """Apply a barrel-distortion (CRT screen curve) to *frame*.
 
     Pixels near the corners are pulled inward, simulating the convex
     curvature of an old CRT display.
+
+    The sampling coordinates are compensated by ``1 / (1 + amount)`` so
+    the midpoints of all four frame edges (r = 1) sample exactly the
+    original edge pixels. Without the compensation every border pixel
+    (r >= 1) sampled past the frame edge and the whole border rendered
+    as straight black bands; with it only the corners can go black —
+    the natural curvature artifact.
 
     Args:
         frame: HWC float32 [0, 255] RGB image.
         amount: Distortion strength in ``[0, 1]``. Zero is identity.
 
     Returns:
-        Processed frame with same shape/dtype as input.
+        Tuple ``(result, mask)``. ``result`` is the processed frame with
+        the same shape/dtype as the input. ``mask`` is a single-channel
+        (H, W) float32 map of the blackened pixels: ``1.0`` where the
+        distorted sample fell completely outside the source (constant
+        black border), ``0.0`` where content is untouched, fractional on
+        the curved boundary (the bilinear coverage of the remap sample).
 
     Raises:
         ValueError: On invalid parameters.
@@ -448,10 +461,11 @@ def curvature(
     if amount < 0 or amount > 1:
         raise ValueError("amount must be in [0, 1]")
 
-    if amount == 0.0:
-        return frame.copy()
-
     h, w, _ = frame.shape
+
+    if amount == 0.0:
+        return frame.copy(), np.zeros((h, w), dtype=np.float32)
+
     cx = (w - 1) / 2.0
     cy = (h - 1) / 2.0
 
@@ -464,9 +478,12 @@ def curvature(
     v = (yy - cy) / max(cy, 1e-6)
     r2 = u * u + v * v
 
-    # Barrel: source coords = center + (pos - center) * (1 + amount * r^2)
-    src_x = cx + (xx - cx) * (1.0 + amount * r2)
-    src_y = cy + (yy - cy) * (1.0 + amount * r2)
+    # Barrel: source coords = center + (pos - center) * (1 + amount * r^2),
+    # scaled by 1 / (1 + amount) so r = 1 (frame-edge midpoints) samples
+    # exactly the frame edge. Corners (r^2 up to 2) still overshoot.
+    scale = (1.0 + amount * r2) / (1.0 + amount)
+    src_x = cx + (xx - cx) * scale
+    src_y = cy + (yy - cy) * scale
 
     result = np.zeros((h, w, 3), dtype=np.float64)
     for ch in range(3):
@@ -479,7 +496,36 @@ def curvature(
             borderValue=0.0,
         )
 
-    return np.clip(result, 0, 255).astype(np.float32)
+    # Blackened-pixel mask: with the constant black border, a remap
+    # sample keeps exactly the total weight of its in-bounds bilinear
+    # taps — so 1 - coverage is the blackening fraction of the pixel.
+    coverage = _bilinear_coverage(src_x, w) * _bilinear_coverage(src_y, h)
+    mask = (1.0 - coverage).astype(np.float32)
+
+    return np.clip(result, 0, 255).astype(np.float32), mask
+
+
+def _bilinear_coverage(src: np.ndarray, n: int) -> np.ndarray:
+    """Fraction of bilinear taps that land inside ``[0, n - 1]``.
+
+    For an INTER_LINEAR remap sample at coordinate ``s`` (pixel centres
+    at ``0 .. n - 1``) cv2 blends the two nearest taps with weights
+    ``(1 - frac, frac)``; out-of-bounds taps are replaced by the border
+    value. The valid weight sum is exactly how much real content
+    survives at this pixel.
+
+    Args:
+        src: Array of sample coordinates (any shape).
+        n: Number of pixels along the axis.
+
+    Returns:
+        Array of per-sample coverage fractions in ``[0, 1]``.
+    """
+    i0 = np.floor(src)
+    frac = src - i0
+    valid0 = (i0 >= 0.0) & (i0 <= n - 1)
+    valid1 = (i0 + 1.0 >= 0.0) & (i0 + 1.0 <= n - 1)
+    return (1.0 - frac) * valid0 + frac * valid1
 
 
 # ---------------------------------------------------------------------------
