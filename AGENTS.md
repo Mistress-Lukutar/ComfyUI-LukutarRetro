@@ -9,11 +9,12 @@ per-filter parameters, and a `show_preview` BOOLEAN widget driving an
 in-node preview. Filters are non-destructive: the output IMAGE always
 carries the processed result, the preview is extra.
 
-Current state: the Pixel category is implemented (RetroPixelize,
-RetroPaletteQuantize, RetroColorDepth, RetroDither); the atomic CRT nodes
-(Scanlines, Subpixel Mask, Bloom, Chromatic Aberration, Screen Curvature,
-Vignette) and the Analog nodes (VHS, LCD Dot Matrix) are planned next.
-Per-node behavior contracts live in `README.md` — keep it in sync.
+Current state: ALL 12 nodes are implemented — Pixel (RetroPixelize,
+RetroPaletteQuantize, RetroColorDepth, RetroDither), CRT (RetroScanlines,
+RetroSubpixelMask, RetroBloom, RetroChromaticAberration, RetroCurvature,
+RetroVignette) and Analog (RetroVHS, RetroLCDDotMatrix). The smoke test
+runs every node end-to-end plus a 4-node chain. Per-node behavior
+contracts live in `README.md` — keep it in sync.
 
 ## Layout & architecture boundaries
 
