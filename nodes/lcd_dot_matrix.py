@@ -79,9 +79,8 @@ class LcdDotMatrixNode:
                     },
                 ),
                 "shape": (
-                    "combo",
+                    list(DOT_SHAPES),
                     {
-                        "choices": DOT_SHAPES,
                         "default": SHAPE_SQUARE,
                         "tooltip": "Dot shape — square or round active region",
                     },

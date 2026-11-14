@@ -100,9 +100,8 @@ class VhsNode:
                     },
                 ),
                 "noise_mode": (
-                    "combo",
+                    list(NOISE_MODES),
                     {
-                        "choices": NOISE_MODES,
                         "default": NOISE_COLOR,
                         "tooltip": "Noise colouring mode",
                     },
