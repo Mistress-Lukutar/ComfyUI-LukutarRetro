@@ -17,9 +17,15 @@
  *   against the real full-resolution temp file instead of the JPEG
  *   preview blob.
  * - The `show_preview` BOOLEAN widget on each node controls whether
- *   previews are shown: when off, `node.imgs` is cleared on the NEXT
- *   execution. When on (default), the backend emits temp image refs
- *   and this extension maps them to /view URLs for rendering.
+ *   previews exist at all: the backend emits NO ui images when it is
+ *   off, so nothing re-appears from the output store. This extension
+ *   additionally clears `node.imgs` and removes the core's
+ *   `$$canvas-image-preview` DOM widget on the next execution — the
+ *   core's async preview loader (`useNodeImage().showPreview()`, run
+ *   from the draw-background handler) would otherwise repopulate
+ *   `node.imgs` from the previous execution's output store after our
+ *   synchronous clear. When on (default), the backend emits temp image
+ *   refs and this extension maps them to /view URLs for rendering.
  *
  * Served at /extensions/<pack>/js/retro_preview.js, hence the THREE
  * parent hops to reach /scripts/app.js.
@@ -37,6 +43,20 @@ function viewUrl(image) {
   params.set("subfolder", image.subfolder ?? "");
   params.set("type", image.type ?? "temp");
   return api.apiURL(`/view?${params.toString()}`);
+}
+
+/**
+ * Remove the core's in-canvas image preview DOM widget, if present.
+ * Mirrors the frontend's removeCanvasImagePreview(): call onRemove and
+ * splice the widget out so the stale preview image disappears too.
+ */
+function removeCanvasPreviewWidget(node) {
+  if (!node.widgets) return;
+  const idx = node.widgets.findIndex((w) => w.name === "$$canvas-image-preview");
+  if (idx > -1) {
+    node.widgets[idx].onRemove?.();
+    node.widgets.splice(idx, 1);
+  }
 }
 
 /** All retro filter node names — covers current and future slices. */
@@ -73,27 +93,34 @@ app.registerExtension({
     nodeType.prototype.onExecuted = function (output) {
       originalOnExecuted?.apply(this, arguments);
 
+      // Read the show_preview widget FIRST: when off we must clear the
+      // preview even if the payload carries no images at all.
+      const widget = this.widgets?.find((w) => w.name === "show_preview");
+      const show = widget ? widget.value !== false : true;
+
+      if (!show) {
+        // show_preview is off — the backend emitted no preview images;
+        // drop anything left over from a previous execution. The core's
+        // async loader will not repopulate node.imgs because the output
+        // store no longer contains image refs for this node.
+        this.imgs = [];
+        removeCanvasPreviewWidget(this);
+        this.graph?.setDirtyCanvas?.(true, false);
+        return;
+      }
+
       const images = output?.images;
       if (!Array.isArray(images) || images.length === 0) return;
 
       this.previewMediaType = "image";
 
-      // Read the show_preview widget to decide whether to render previews.
-      const widget = this.widgets?.find((w) => w.name === "show_preview");
-      const show = widget ? widget.value !== false : true;
-
-      if (show) {
-        this.imgs = images
-          .filter((image) => image && image.filename)
-          .map((image) => {
-            const img = new Image();
-            img.src = viewUrl(image);
-            return img;
-          });
-      } else {
-        // show_preview is off — clear previews on next execution.
-        this.imgs = [];
-      }
+      this.imgs = images
+        .filter((image) => image && image.filename)
+        .map((image) => {
+          const img = new Image();
+          img.src = viewUrl(image);
+          return img;
+        });
     };
   },
 });

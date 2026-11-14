@@ -402,23 +402,26 @@ matching pitch.
 
 Every filter node carries a `show_preview` BOOLEAN widget (default **on**).
 When on, the backend saves per-frame preview PNGs to the ComfyUI temp
-directory with the long side capped at 1024 px; the `IMAGE` output always
-carries the full-resolution processed result. The web extension
+directory at the frame's FULL resolution — the preview shows exactly the
+pixels the `IMAGE` output carries, with no downscaling. The web extension
 (`web/js/retro_preview.js`) hides the v2 output section (`node.hideOutputImages = true`)
 and feeds `/view` URLs of the temp files into `node.imgs` on execution, so
 right-click **Open Image / Copy Image / Save Image** works against the real
 temp files.
 
-When `show_preview` is toggled off, the next execution clears `node.imgs`
-(the v2 output section stays hidden; no preview renders inside the node body).
-The pack remains fully functional without the web extension: in that case
-the preview images simply appear in the standard ComfyUI output section.
+When `show_preview` is toggled off, the backend emits no preview images at
+all (no temp PNGs are written), and the next execution clears the previous
+in-node preview: `node.imgs` is emptied and the frontend's in-canvas image
+preview widget (`$$canvas-image-preview`) is removed, so no stale preview
+remains inside the node body. The pack remains fully functional without the
+web extension: in that case the preview images simply appear in the standard
+ComfyUI output section.
 
 Nodes are `OUTPUT_NODE = True`, meaning they re-execute whenever their inputs
 change — same behaviour as the built-in Preview Image node. The `show_preview`
 widget value is declared in `INPUT_TYPES` so it serializes into workflows
-without frontend-only hacks; the backend accepts and ignores it (preview
-saving is always performed, the toggle only controls frontend rendering).
+without frontend-only hacks; the backend honours it (off = no preview is
+generated, on = temp PNGs are emitted for the frontend to render).
 
 ## Development
 

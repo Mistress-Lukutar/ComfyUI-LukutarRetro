@@ -92,7 +92,7 @@ class LcdDotMatrixNode:
                         "default": True,
                         "tooltip": (
                             "Show the processed result as an in-node preview "
-                            "(frontend toggle; the backend accepts and ignores it)"
+                            "(off = no preview is generated at all)"
                         ),
                     },
                 ),
@@ -122,7 +122,7 @@ class LcdDotMatrixNode:
             grid_dark: Darkening factor for gap pixels in [0, 1].
                 0 = no darkening; 1 = fully dark gaps.
             shape: Dot shape — one of DOT_SHAPES.
-            show_preview: Whether to save preview PNGs (ignored by backend).
+            show_preview: Whether to generate in-node preview images.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -144,4 +144,4 @@ class LcdDotMatrixNode:
             grid_dark,
             shape,
         )
-        return build_output_payload(out)
+        return build_output_payload(out, show_preview=show_preview)

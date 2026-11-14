@@ -103,7 +103,7 @@ class ScanlinesNode:
                         "default": True,
                         "tooltip": (
                             "Show the processed result as an in-node preview "
-                            "(frontend toggle; the backend accepts and ignores it)"
+                            "(off = no preview is generated at all)"
                         ),
                     },
                 ),
@@ -129,7 +129,7 @@ class ScanlinesNode:
             strength: Maximum dimming factor in [0, 1].
             offset: Row phase shift applied before the modulo operation.
             profile: Brightness profile — one of SCANLINE_PROFILES.
-            show_preview: Whether to save preview PNGs (ignored by backend).
+            show_preview: Whether to generate in-node preview images.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -152,4 +152,4 @@ class ScanlinesNode:
             offset,
             profile,
         )
-        return build_output_payload(out)
+        return build_output_payload(out, show_preview=show_preview)

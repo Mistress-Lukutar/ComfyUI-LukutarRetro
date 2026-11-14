@@ -74,7 +74,7 @@ class ColorDepthNode:
                         "default": True,
                         "tooltip": (
                             "Show the processed result as an in-node preview "
-                            "(frontend toggle; the backend accepts and ignores it)"
+                            "(off = no preview is generated at all)"
                         ),
                     },
                 ),
@@ -94,7 +94,7 @@ class ColorDepthNode:
             image: ComfyUI IMAGE batch (B, H, W, 3), float in [0, 1].
             mode: "bits" (2^value levels) or "levels" (exact value levels).
             value: Bit depth (1-8) when mode=bits; exact levels (2-64) when mode=levels.
-            show_preview: Whether to save preview PNGs (ignored by backend).
+            show_preview: Whether to generate in-node preview images.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -126,4 +126,4 @@ class ColorDepthNode:
             value,
             levels,
         )
-        return build_output_payload(out)
+        return build_output_payload(out, show_preview=show_preview)

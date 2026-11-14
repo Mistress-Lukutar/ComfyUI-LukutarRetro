@@ -78,7 +78,7 @@ class VignetteNode:
                         "default": True,
                         "tooltip": (
                             "Show the processed result as an in-node preview "
-                            "(frontend toggle; the backend accepts and ignores it)"
+                            "(off = no preview is generated at all)"
                         ),
                     },
                 ),
@@ -100,7 +100,7 @@ class VignetteNode:
             strength: Maximum darkening factor in [0, 1].
             radius: Normalised distance at which darkening begins ([0, 1]).
             softness: Controls the steepness of the transition in [0, 1].
-            show_preview: Whether to save preview PNGs (ignored by backend).
+            show_preview: Whether to generate in-node preview images.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -121,4 +121,4 @@ class VignetteNode:
             radius,
             softness,
         )
-        return build_output_payload(out)
+        return build_output_payload(out, show_preview=show_preview)

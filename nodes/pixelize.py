@@ -84,7 +84,7 @@ class PixelizeNode:
                         "default": True,
                         "tooltip": (
                             "Show the processed result as an in-node preview "
-                            "(frontend toggle; the backend accepts and ignores it)"
+                            "(off = no preview is generated at all)"
                         ),
                     },
                 ),
@@ -106,7 +106,7 @@ class PixelizeNode:
             pixel_size: Cell dimension in pixels (>= 1).
             sampling: Pooling method from SAMPLE_METHODS.
             pre_blur: Gaussian blur sigma applied before downsampling (>= 0).
-            show_preview: Whether to save preview PNGs (ignored by backend).
+            show_preview: Whether to generate in-node preview images.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -124,4 +124,4 @@ class PixelizeNode:
             sampling,
             pre_blur,
         )
-        return build_output_payload(out)
+        return build_output_payload(out, show_preview=show_preview)

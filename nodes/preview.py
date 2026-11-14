@@ -6,8 +6,10 @@ Date:   2026-11-14
 Version: v0.1.0
 
 Every filter node returns IMAGE from build_output_payload(). The preview
-images are saved to the ComfyUI temp directory and fed to the frontend
-via node.imgs by web/js/retro_preview.js.
+images are saved to the ComfyUI temp directory at FULL resolution (same
+pixels as the IMAGE output) and fed to the frontend via node.imgs by
+web/js/retro_preview.js. When show_preview is off no preview is
+generated at all.
 '''
 
 from __future__ import annotations
@@ -15,15 +17,11 @@ from __future__ import annotations
 import logging
 import os
 
-import cv2
 import numpy as np
 
 from ..utils.images import frames_to_tensor
 
 logger = logging.getLogger(__name__)
-
-#: Long-side cap for in-node preview PNGs (the IMAGE output keeps full res).
-MAX_PREVIEW_SIZE: int = 1024
 
 
 def _load_pil() -> object | None:
@@ -66,6 +64,9 @@ _folder_props = _folder_paths()
 def save_preview_files(frames: list[np.ndarray]) -> list[dict[str, str]]:
     """Save per-frame preview PNGs to the ComfyUI temp directory.
 
+    Previews are saved at the frame's FULL resolution — the preview shows
+    exactly the pixels the IMAGE output carries, with no downscaling.
+
     NEVER raises — catches all exceptions, logs a warning, and returns [].
     When called outside the ComfyUI runtime (PIL or folder_paths missing),
     returns [] immediately.
@@ -81,29 +82,23 @@ def save_preview_files(frames: list[np.ndarray]) -> list[dict[str, str]]:
         return []
 
     try:
+        first = frames[0] if frames else None
+        hint_h, hint_w = (
+            (first.shape[0], first.shape[1]) if first is not None else (1024, 1024)
+        )
         full_output_dir, base_name, counter, subfolder, _ = (
             _folder_props.get_save_image_path(
                 "retro_preview",
                 _folder_props.get_temp_directory(),
-                1024,
-                1024,
+                hint_w,
+                hint_h,
             )
         )
 
         results: list[dict[str, str]] = []
         for frame in frames:
-            h, w, _ = frame.shape
-            long_side = max(h, w)
-
-            work = frame.copy()
-            if long_side > MAX_PREVIEW_SIZE:
-                scale = MAX_PREVIEW_SIZE / long_side
-                new_w = int(round(w * scale))
-                new_h = int(round(h * scale))
-                work = cv2.resize(work, (new_w, new_h), interpolation=cv2.INTER_AREA)
-
-            # Convert to uint8 for PIL
-            arr = np.clip(work, 0, 255).astype(np.uint8)
+            # Convert to uint8 for PIL — full resolution, no downscale.
+            arr = np.clip(frame, 0, 255).astype(np.uint8)
             pil_img = _Image.fromarray(arr)
 
             filename = f"{base_name}_{counter:05}.png"
@@ -125,16 +120,19 @@ def save_preview_files(frames: list[np.ndarray]) -> list[dict[str, str]]:
         return []
 
 
-def build_output_payload(frames: list[np.ndarray]) -> dict:
+def build_output_payload(frames: list[np.ndarray], show_preview: bool = True) -> dict:
     """Build the uniform OUTPUT_NODE return payload.
 
     Args:
         frames: List of HWC float32 [0, 255] RGB numpy arrays.
+        show_preview: When False, no preview PNGs are generated and the
+            ui payload carries an empty image list — the frontend clears
+            any previously shown preview on the next execution.
 
     Returns:
         Dict with ``"ui": {"images": [...]}`` and ``"result": (IMAGE_tensor,)``.
     """
-    ui_images = save_preview_files(frames)
+    ui_images = save_preview_files(frames) if show_preview else []
     return {
         "ui": {"images": ui_images},
         "result": (frames_to_tensor(frames),),

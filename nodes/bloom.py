@@ -89,7 +89,7 @@ class BloomNode:
                         "default": True,
                         "tooltip": (
                             "Show the processed result as an in-node preview "
-                            "(frontend toggle; the backend accepts and ignores it)"
+                            "(off = no preview is generated at all)"
                         ),
                     },
                 ),
@@ -113,7 +113,7 @@ class BloomNode:
             radius: Gaussian blur sigma in pixels (>= 0.05).
             intensity: Bloom contribution multiplier in [0, 4].
             blend: Blend mode — one of BLOOM_BLENDS.
-            show_preview: Whether to save preview PNGs (ignored by backend).
+            show_preview: Whether to generate in-node preview images.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -135,4 +135,4 @@ class BloomNode:
             intensity,
             blend,
         )
-        return build_output_payload(out)
+        return build_output_payload(out, show_preview=show_preview)

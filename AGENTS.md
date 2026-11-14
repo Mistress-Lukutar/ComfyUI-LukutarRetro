@@ -50,14 +50,20 @@ contracts live in `README.md` — keep it in sync.
 ### Preview contract (nodes/preview.py)
 
 Every filter node: `OUTPUT_NODE = True`, `RETURN_TYPES = ("IMAGE",)`.
-`build_preview(frames)` in `nodes/preview.py` saves each frame as a temp
-PNG via guarded PIL (Pillow from the ComfyUI runtime), caps the long side
-at 1024 px (preview only — the IMAGE output keeps full resolution),
-returns the `{"ui": {"images": [...]}, "result": (tensor,)}` payload; on
-any failure it logs and returns a payload without ui images (preview must
-never kill the filter). The `show_preview` widget IS declared in
-INPUT_TYPES (frontend stores it, backend accepts and ignores it) so it
-serializes without frontend-only widget hacks.
+`build_output_payload(frames, show_preview=True)` in `nodes/preview.py`
+saves each frame as a temp PNG via guarded PIL (Pillow from the ComfyUI
+runtime) at FULL resolution — no downscaling; the preview shows exactly
+the pixels the IMAGE output carries — and returns the
+`{"ui": {"images": [...]}, "result": (tensor,)}` payload; on any failure
+it logs and returns a payload without ui images (preview must never kill
+the filter). The `show_preview` widget IS declared in INPUT_TYPES (so it
+serializes without frontend-only widget hacks) and is HONOURED by the
+backend: when off, no preview PNGs are generated and the ui payload
+carries an empty image list — the frontend then clears `node.imgs` and
+removes the core's `$$canvas-image-preview` widget on the next execution
+(web/js/retro_preview.js). Both halves are required: the core's async
+preview loader repopulates `node.imgs` from the output store unless the
+executed output contains no image refs.
 
 Adding a node: engine in `core/`, node class in `nodes/`, register in
 `nodes/__init__.py` (`NODE_CLASS_MAPPINGS` + `NODE_DISPLAY_NAME_MAPPINGS`)

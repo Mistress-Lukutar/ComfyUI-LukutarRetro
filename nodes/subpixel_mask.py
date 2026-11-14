@@ -73,7 +73,7 @@ class SubpixelMaskNode:
                         "default": True,
                         "tooltip": (
                             "Show the processed result as an in-node preview "
-                            "(frontend toggle; the backend accepts and ignores it)"
+                            "(off = no preview is generated at all)"
                         ),
                     },
                 ),
@@ -93,7 +93,7 @@ class SubpixelMaskNode:
             image: ComfyUI IMAGE batch (B, H, W, 3), float in [0, 1].
             mask: Phosphor-mask type — one of MASK_TYPES.
             pitch: Stripe width in pixels (>= 1).
-            show_preview: Whether to save preview PNGs (ignored by backend).
+            show_preview: Whether to generate in-node preview images.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -109,4 +109,4 @@ class SubpixelMaskNode:
             mask,
             pitch,
         )
-        return build_output_payload(out)
+        return build_output_payload(out, show_preview=show_preview)

@@ -113,7 +113,7 @@ class VhsNode:
                         "default": True,
                         "tooltip": (
                             "Show the processed result as an in-node preview "
-                            "(frontend toggle; the backend accepts and ignores it)"
+                            "(off = no preview is generated at all)"
                         ),
                     },
                 ),
@@ -145,7 +145,7 @@ class VhsNode:
             band: Rolling-band brightening strength in [0, 1].
             seed: Random seed (0 = fresh randomness each run; >0 = deterministic).
             noise_mode: Noise colouring — one of NOISE_MODES.
-            show_preview: Whether to save preview PNGs (ignored by backend).
+            show_preview: Whether to generate in-node preview images.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -169,4 +169,4 @@ class VhsNode:
             seed,
             noise_mode,
         )
-        return build_output_payload(out)
+        return build_output_payload(out, show_preview=show_preview)

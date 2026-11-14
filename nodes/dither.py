@@ -116,7 +116,7 @@ class DitherNode:
                         "default": True,
                         "tooltip": (
                             "Show the processed result as an in-node preview "
-                            "(frontend toggle; the backend accepts and ignores it)"
+                            "(off = no preview is generated at all)"
                         ),
                     },
                 ),
@@ -142,7 +142,7 @@ class DitherNode:
             dither_method: One of DITHER_NODE_METHODS (never "none").
             strength: Dither amplitude in [0, 1].
             serpentine: Alternate scanline direction for diffusion methods.
-            show_preview: Whether to save preview PNGs (ignored by backend).
+            show_preview: Whether to generate in-node preview images.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -178,4 +178,4 @@ class DitherNode:
             dither_method,
             strength,
         )
-        return build_output_payload(out)
+        return build_output_payload(out, show_preview=show_preview)
