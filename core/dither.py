@@ -7,8 +7,10 @@ Version: v0.1.0
 
 Ordered methods (bayer2/4/8) are fully vectorised via ``np.tile``.
 Error-diffusion methods (floyd-steinberg, atkinson) use a sequential scanline
-pass per channel plane — CPU-bound in CPython (seconds per megapixel), which
-is documented behaviour, not a bug.
+pass per channel plane. The scan is implemented over plain Python lists with
+a sliding window of pending future rows — the same math as a naive numpy
+scalar loop, but several times faster per megapixel (naive numpy scalar
+arithmetic was slow enough to freeze the ComfyUI server on large frames).
 '''
 
 from __future__ import annotations
@@ -173,6 +175,14 @@ def _dither_diffusion(
     Scans each channel plane row by row, propagating quantisation error to
     unprocessed neighbours according to the kernel.  For *serpentine=True*
     odd rows are scanned right-to-left and kernel x-offsets are mirrored.
+
+    Runs over plain Python lists (``plane.tolist()``) with a sliding window
+    of the current row plus the ``max(dr)`` pending future rows — error
+    diffusion is inherently sequential, and numpy scalar indexing is an
+    order of magnitude slower per pixel than float locals.
+
+    A fully processed row is written back to the numpy plane immediately,
+    so only ``max(dr) + 1`` rows live as Python lists at any time.
     """
     step = 255.0 / (levels - 1)
     kernel = DIFFUSION_KERNELS[method]
@@ -180,35 +190,64 @@ def _dither_diffusion(
     h, w, _ = frame.shape
     result = frame.astype(np.float64).copy()
 
+    # Serpentine scan mirrors the x-offsets once — identical for all odd rows.
+    mirrored_kernel: tuple[tuple[int, int, float], ...] = tuple(
+        (-dc, dr, wt) for dc, dr, wt in kernel
+    )
+    #: Largest row offset in the kernel → rows held in the pending window.
+    max_dr = max(dr for _, dr, _ in kernel)
+
     for ch in range(3):
         plane = result[:, :, ch]
 
+        # Sliding window: window[0] is the current row, window[dr] the row
+        # `dr` steps ahead (holding accumulated pending error). Tail entries
+        # are None once past the bottom of the frame.
+        first_rows = min(max_dr + 1, h)
+        window: list[list[float] | None] = [
+            plane[r].tolist() for r in range(first_rows)
+        ]
+        window.extend([None] * (max_dr + 1 - first_rows))
+
         for row in range(h):
             if serpentine and row % 2 == 1:
-                # Right-to-left scan, mirror col offsets
-                scan_kernel: tuple[tuple[int, int, float], ...] = tuple(
-                    (-dc, dr, wt) for dc, dr, wt in kernel
-                )
-                col_start = w - 1
-                col_step = -1
+                scan_kernel = mirrored_kernel
+                cols: range = range(w - 1, -1, -1)
             else:
                 scan_kernel = kernel
-                col_start = 0
-                col_step = 1
+                cols = range(w)
 
-            end_col = -1 if col_step == -1 else w
-            for col in range(col_start, end_col, col_step):
-                old_val = plane[row, col]
+            cur = window[0]
+            # window[0] is a real row for every processed row (the window is
+            # refilled ahead of the scan); the None tail only sits at dr > 0.
+            assert cur is not None
+            for col in cols:
+                old_val = cur[col]
                 # Clamp to [0, 255]: accumulated error can push the running
                 # value past the outer levels; without the clamp the
                 # quantized residue would leak oversized errors downstream.
-                new_val = min(255.0, max(0.0, round(old_val / step) * step))
-                plane[row, col] = new_val
+                new_val = round(old_val / step) * step
+                if new_val < 0.0:
+                    new_val = 0.0
+                elif new_val > 255.0:
+                    new_val = 255.0
+                cur[col] = new_val
                 err = (old_val - new_val) * strength
 
+                if err == 0.0:
+                    continue
+
                 for dc, dr, wt in scan_kernel:
-                    nr, nc = row + dr, col + dc
-                    if 0 <= nr < h and 0 <= nc < w:
-                        plane[nr, nc] += err * wt
+                    nc = col + dc
+                    if 0 <= nc < w:
+                        target = window[dr] if dr <= max_dr else None
+                        if target is not None:
+                            target[nc] += err * wt
+
+            # Write the completed row back; slide the window down one row.
+            plane[row] = cur
+            window.pop(0)
+            next_row = row + max_dr + 1
+            window.append(plane[next_row].tolist() if next_row < h else None)
 
     return np.clip(result, 0, 255).astype(np.float32)

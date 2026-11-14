@@ -255,43 +255,84 @@ class PaletteQuantizer:
         For *serpentine=True* odd rows are scanned right-to-left and kernel
         x-offsets are mirrored.
 
-        CPU-bound Python loop — same design as ``core/dither.py``.
+        Runs over plain Python lists with a sliding window of pending future
+        rows and a flattened LUT (``list[int]`` rows) — error diffusion is
+        inherently sequential and numpy scalar indexing is an order of
+        magnitude slower per pixel (slow enough to freeze the ComfyUI
+        server on large frames, e.g. with Atkinson).
         """
         h, w, _ = frame.shape
         result = frame.astype(np.float64).copy()
         kernel = DIFFUSION_KERNELS[self.dither]
+        strength = self.strength
+        serpentine = self.serpentine
+
+        # Flattened LUT: index = (r_bin << 10) | (g_bin << 5) | b_bin.
+        lut = self._lut.reshape(-1, 3).tolist()
+
+        # Serpentine scan mirrors the x-offsets once — identical for all
+        # odd rows.
+        mirrored_kernel: tuple[tuple[int, int, float], ...] = tuple(
+            (-dc, dr, wt) for dc, dr, wt in kernel
+        )
+        #: Largest row offset in the kernel → rows held in the pending window.
+        max_dr = max(dr for _, dr, _ in kernel)
+
+        # Sliding window: window[0] is the current row (list of ``[r, g, b]``
+        # float lists), window[dr] the row ``dr`` steps ahead (holding
+        # accumulated pending error). Tail entries are None past the bottom.
+        first_rows = min(max_dr + 1, h)
+        window: list[list[list[float]] | None] = [
+            result[r].tolist() for r in range(first_rows)
+        ]
+        window.extend([None] * (max_dr + 1 - first_rows))
 
         for row in range(h):
-            if self.serpentine and row % 2 == 1:
-                scan_kernel: tuple[tuple[int, int, float], ...] = tuple(
-                    (-dc, dr, wt) for dc, dr, wt in kernel
-                )
-                col_start = w - 1
-                col_step = -1
+            if serpentine and row % 2 == 1:
+                scan_kernel = mirrored_kernel
+                cols: range = range(w - 1, -1, -1)
             else:
                 scan_kernel = kernel
-                col_start = 0
-                col_step = 1
+                cols = range(w)
 
-            end_col = -1 if col_step == -1 else w
-            for col in range(col_start, end_col, col_step):
-                # .copy() is essential: basic indexing returns a VIEW, and
-                # writing the matched color below would silently turn the
-                # diffused error into zero (matched - matched).
-                pixel = result[row, col].copy()  # (3,) float64
-                key = np.clip(pixel, 0, 255).astype(np.uint8)
-                matched = self._lut[
-                    key[0] >> LUT_BIN_SHIFT,
-                    key[1] >> LUT_BIN_SHIFT,
-                    key[2] >> LUT_BIN_SHIFT,
-                ].astype(np.float64)
+            cur = window[0]
+            # window[0] is a real row for every processed row (the window is
+            # refilled ahead of the scan); the None tail only sits at dr > 0.
+            assert cur is not None
+            for col in cols:
+                pixel = cur[col]
+                r, g, b = pixel
+                # Clamp to [0, 255] and truncate toward zero — identical to
+                # np.clip(pixel, 0, 255).astype(np.uint8) on the old path.
+                kr = 0 if r < 0.0 else (255 if r > 255.0 else int(r))
+                kg = 0 if g < 0.0 else (255 if g > 255.0 else int(g))
+                kb = 0 if b < 0.0 else (255 if b > 255.0 else int(b))
+                matched = lut[
+                    ((kr >> LUT_BIN_SHIFT) << 10)
+                    | ((kg >> LUT_BIN_SHIFT) << 5)
+                    | (kb >> LUT_BIN_SHIFT)
+                ]
+                cur[col] = matched
+                er = (r - matched[0]) * strength
+                eg = (g - matched[1]) * strength
+                eb = (b - matched[2]) * strength
 
-                result[row, col] = matched
-                err = (pixel - matched) * self.strength
+                if er == 0.0 and eg == 0.0 and eb == 0.0:
+                    continue
 
                 for dc, dr, wt in scan_kernel:
-                    nr, nc = row + dr, col + dc
-                    if 0 <= nr < h and 0 <= nc < w:
-                        result[nr, nc] += err * wt
+                    nc = col + dc
+                    if 0 <= nc < w:
+                        target = window[dr] if dr <= max_dr else None
+                        if target is not None:
+                            target[nc][0] += er * wt
+                            target[nc][1] += eg * wt
+                            target[nc][2] += eb * wt
+
+            # Write the completed row back; slide the window down one row.
+            result[row] = cur
+            window.pop(0)
+            next_row = row + max_dr + 1
+            window.append(result[next_row].tolist() if next_row < h else None)
 
         return np.clip(result, 0, 255).astype(np.float32)

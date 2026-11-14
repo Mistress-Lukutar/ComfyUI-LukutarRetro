@@ -69,11 +69,16 @@ dither nodes), `Lukutar/Retro/CRT` (atomic screen effects),
 
 ## Known implementation traps (do not regress)
 
-- Error-diffusion scan loops MUST copy the pixel before overwriting it
-  (`pixel = plane[row, col].copy()`): basic indexing returns a view, so
-  writing the matched value through it silently zeroes the diffused
-  error. Regression: `TestErrorDiffusionSpreads` in
-  `tests/unit/test_quantize.py`.
+- Error-diffusion scan loops (`core/dither.py`, `core/quantize.py`) run
+  over plain Python lists with a sliding window of pending future rows —
+  numpy scalar indexing was an order of magnitude slower and froze the
+  server on large frames (reported as "Atkinson hangs the system"). Two
+  invariants hold the rewrite correct: a processed pixel must never
+  receive error again (scan-direction neighbours only — this is also why
+  `cur[col] = matched` may safely alias the shared LUT row list), and the
+  matched colour must be written BEFORE diffusing its error, never
+  through a stale view (the original numpy-view regression:
+  `TestErrorDiffusionSpreads` in `tests/unit/test_quantize.py`).
 - Clamp the quantized value to `[0, 255]` inside diffusion loops —
   accumulated error can overshoot the outer levels and would otherwise
   leak oversized residues into downstream pixels.

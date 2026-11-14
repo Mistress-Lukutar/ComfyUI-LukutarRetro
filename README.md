@@ -82,8 +82,10 @@ token). Non-empty `custom_palette` overrides the `palette` combo entirely.
 **Dithering.** Ordered Bayer methods (`bayer2`, `bayer4`, `bayer8`) are fully
 vectorised and fast. Error-diffusion methods (`floyd-steinberg`, `atkinson`)
 use a sequential scanline pass per pixel (not per channel — the matched palette
-colour is used as a single RGB unit); they are CPU-bound in CPython (seconds
-per megapixel). For ordered dithering, `dither_strength` scales the threshold
+colour is used as a single RGB unit); they are CPU-bound in CPython (the scan
+runs over plain Python lists with a sliding window of pending rows, roughly
+3-5x faster than the earlier numpy-scalar loop, but still seconds per
+megapixel). For ordered dithering, `dither_strength` scales the threshold
 amplitude by a self-calibrated mean CIELAB distance of the palette; for
 diffusion methods it scales the error propagated to neighbours.
 
@@ -146,7 +148,8 @@ dithers — producing a greyscale output.
 
 **Dither methods.** `bayer2`, `bayer4`, `bayer8` are fast vectorised ordered
 dithering with threshold matrices of increasing granularity. `floyd-steinberg`
-and `atkinson` are error-diffusion methods (CPU-bound sequential scanline).
+and `atkinson` are error-diffusion methods (CPU-bound sequential scanline,
+same optimized list-based scan as Palette Quantize).
 The node excludes `none` from its combo — use **Color Depth** for undithered
 posterization.
 
