@@ -131,12 +131,8 @@ secret and publish the version written in `pyproject.toml` to the
 registry — publisher `mistress-lukutar`, node id `lukutar-retro`
 (registry.comfy.org/publishers/mistress-lukutar).
 
-**Note (as of v0.1.0): the workflow file is tracked, but the repo has
-not been pushed yet** — the GitHub remote exists
-(github.com/Mistress-Lukutar/ComfyUI-LukutarRetro) with no content.
-Until the first push, tag pushes publish nothing; also make sure the
-`REGISTRY_ACCESS_TOKEN` repo secret is set (same registry token as the
-sibling packs) before pushing a tag.
+Make sure the `REGISTRY_ACCESS_TOKEN` repo secret is set (same registry
+token as the sibling packs) before pushing a tag.
 
 ```bash
 # checks green first: pytest, ruff, mypy, smoke test (see Commands)
