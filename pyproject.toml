@@ -43,5 +43,9 @@ line-length = 88
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# Workflow generator: long prose lines are markdown note content, not code.
+"examples/*" = ["E501"]
+
 [tool.mypy]
 python_version = "3.10"

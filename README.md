@@ -460,6 +460,26 @@ widget value is declared in `INPUT_TYPES` so it serializes into workflows
 without frontend-only hacks; the backend honours it (off = no preview is
 generated, on = temp PNGs are emitted for the frontend to render).
 
+## Examples
+
+`examples/` ships ready-to-load demo workflows — drag a JSON onto the ComfyUI
+canvas.
+
+| File | Demonstrates |
+|------|--------------|
+| `01_pixel_art.json` | Pixelize → Palette Quantize (custom hex palette + Bayer 8) → LCD Dot Matrix |
+| `02_crt_monitor.json` | Full CRT tube: Pixelize → Scanlines → Subpixel Mask → Bloom → Chromatic Aberration → Curvature → Vignette |
+| `03_vhs_tape.json` | Color Depth + VHS at two signal strengths (tape vs direct), seed semantics |
+| `04_dither_studio.json` | Dither (8-bit) and Palette Quantize: ordered vs error-diffusion dithering |
+| `05_full_showcase.json` | The whole pack chained: content → screen pattern → optics → glass → analog out |
+
+Every workflow is grouped per stage and annotated with Markdown notes
+explaining the pairing rules (e.g. `LCD cell_size` = `Pixelize pixel_size`).
+The demos load demo portraits through LoadImage (`retro_demo_*.jpg`,
+~683×1024) — point each LoadImage node at any image in your ComfyUI
+`input/` folder and re-pick it after importing; scale `pixel_size` /
+`cell_size` with the input resolution for larger frames.
+
 ## Development
 
 ```bash

@@ -1,0 +1,356 @@
+{
+  "id": "40741981-8e73-5c0c-9c8c-f785b6d009b8",
+  "revision": 0,
+  "last_node_id": 7,
+  "last_link_id": 11,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        560,
+        250
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "MarkdownNote",
+        "text": "## Pixel Art - Pixelize -> Palette -> LCD\n\nTurns a photo into pixel art and overlays an LCD dot grid.\n\n**Chain:** `LoadImage -> RetroPixelize -> RetroPaletteQuantize -> RetroLCDDotMatrix -> SaveImage`\n\n- `RetroPixelize` pools colour per `pixel_size` cell - `mode` keeps solid colour regions clean (try `mean` for a softer, blended look).\n- `RetroPaletteQuantize` snaps every pixel to the nearest palette colour in CIELAB space. The `custom_palette` hex list (SLSO8) **overrides** the combo - clear it to fall back to `pico8_16`.\n- `bayer8` ordered dithering trades palette banding for a regular dot pattern; fully vectorised, near-instant.\n- **Pairing rule:** `cell_size` = `pixel_size` (here 8) so the LCD gaps land exactly between the art cells.\n- Tuned for a ~683x1024 input - scale `pixel_size` / `cell_size` up with the resolution."
+      },
+      "widgets_values": [
+        "## Pixel Art - Pixelize -> Palette -> LCD\n\nTurns a photo into pixel art and overlays an LCD dot grid.\n\n**Chain:** `LoadImage -> RetroPixelize -> RetroPaletteQuantize -> RetroLCDDotMatrix -> SaveImage`\n\n- `RetroPixelize` pools colour per `pixel_size` cell - `mode` keeps solid colour regions clean (try `mean` for a softer, blended look).\n- `RetroPaletteQuantize` snaps every pixel to the nearest palette colour in CIELAB space. The `custom_palette` hex list (SLSO8) **overrides** the combo - clear it to fall back to `pico8_16`.\n- `bayer8` ordered dithering trades palette banding for a regular dot pattern; fully vectorised, near-instant.\n- **Pairing rule:** `cell_size` = `pixel_size` (here 8) so the LCD gaps land exactly between the art cells.\n- Tuned for a ~683x1024 input - scale `pixel_size` / `cell_size` up with the resolution."
+      ],
+      "widgets_values_named": {
+        "text": "## Pixel Art - Pixelize -> Palette -> LCD\n\nTurns a photo into pixel art and overlays an LCD dot grid.\n\n**Chain:** `LoadImage -> RetroPixelize -> RetroPaletteQuantize -> RetroLCDDotMatrix -> SaveImage`\n\n- `RetroPixelize` pools colour per `pixel_size` cell - `mode` keeps solid colour regions clean (try `mean` for a softer, blended look).\n- `RetroPaletteQuantize` snaps every pixel to the nearest palette colour in CIELAB space. The `custom_palette` hex list (SLSO8) **overrides** the combo - clear it to fall back to `pico8_16`.\n- `bayer8` ordered dithering trades palette banding for a regular dot pattern; fully vectorised, near-instant.\n- **Pairing rule:** `cell_size` = `pixel_size` (here 8) so the LCD gaps land exactly between the art cells.\n- Tuned for a ~683x1024 input - scale `pixel_size` / `cell_size` up with the resolution."
+      }
+    },
+    {
+      "id": 2,
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        1350
+      ],
+      "size": [
+        440,
+        190
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "MarkdownNote",
+        "text": "### Palette and dither notes\n\n- CIELAB matching snaps colours *perceptually*, not numerically - darks and skin tones stay readable even in an 8-colour palette.\n- `dither_strength` 0.5-0.8 gives subtle texture; 1.0 is full amplitude.\n- Error-diffusion alternatives (`floyd-steinberg`, `atkinson`) are ~50x slower but far smoother."
+      },
+      "widgets_values": [
+        "### Palette and dither notes\n\n- CIELAB matching snaps colours *perceptually*, not numerically - darks and skin tones stay readable even in an 8-colour palette.\n- `dither_strength` 0.5-0.8 gives subtle texture; 1.0 is full amplitude.\n- Error-diffusion alternatives (`floyd-steinberg`, `atkinson`) are ~50x slower but far smoother."
+      ],
+      "widgets_values_named": {
+        "text": "### Palette and dither notes\n\n- CIELAB matching snaps colours *perceptually*, not numerically - darks and skin tones stay readable even in an 8-colour palette.\n- `dither_strength` 0.5-0.8 gives subtle texture; 1.0 is full amplitude.\n- Error-diffusion alternatives (`floyd-steinberg`, `atkinson`) are ~50x slower but far smoother."
+      }
+    },
+    {
+      "id": 3,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        400
+      ],
+      "size": [
+        320,
+        540
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            8
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "retro_demo_street.jpg",
+        "image"
+      ],
+      "widgets_values_named": {
+        "image": "retro_demo_street.jpg",
+        "upload": "image"
+      }
+    },
+    {
+      "id": 4,
+      "type": "RetroPixelize",
+      "pos": [
+        520,
+        400
+      ],
+      "size": [
+        360,
+        780
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RetroPixelize"
+      },
+      "widgets_values": [
+        8,
+        "mode",
+        0.0,
+        true
+      ],
+      "widgets_values_named": {
+        "pixel_size": 8,
+        "sampling": "mode",
+        "pre_blur": 0.0,
+        "show_preview": true
+      }
+    },
+    {
+      "id": 5,
+      "type": "RetroPaletteQuantize",
+      "pos": [
+        1040,
+        400
+      ],
+      "size": [
+        360,
+        780
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RetroPaletteQuantize"
+      },
+      "widgets_values": [
+        "pico8_16",
+        "#0d2b45 #203c56 #544e68 #8d697a #d08159 #ffaa5e #ffd4a3 #fff1e8",
+        "bayer8",
+        0.7,
+        true,
+        true
+      ],
+      "widgets_values_named": {
+        "palette": "pico8_16",
+        "custom_palette": "#0d2b45 #203c56 #544e68 #8d697a #d08159 #ffaa5e #ffd4a3 #fff1e8",
+        "dither": "bayer8",
+        "dither_strength": 0.7,
+        "serpentine": true,
+        "show_preview": true
+      }
+    },
+    {
+      "id": 6,
+      "type": "RetroLCDDotMatrix",
+      "pos": [
+        1560,
+        400
+      ],
+      "size": [
+        360,
+        780
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RetroLCDDotMatrix"
+      },
+      "widgets_values": [
+        8,
+        0.15,
+        0.5,
+        "square",
+        true
+      ],
+      "widgets_values_named": {
+        "cell_size": 8,
+        "gap_ratio": 0.15,
+        "grid_dark": 0.5,
+        "shape": "square",
+        "show_preview": true
+      }
+    },
+    {
+      "id": 7,
+      "type": "SaveImage",
+      "pos": [
+        2080,
+        400
+      ],
+      "size": [
+        360,
+        580
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 11
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "LukutarRetro/Example_PixelArt"
+      ],
+      "widgets_values_named": {
+        "filename_prefix": "LukutarRetro/Example_PixelArt"
+      }
+    }
+  ],
+  "links": [
+    [
+      8,
+      3,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      4,
+      0,
+      5,
+      0,
+      "IMAGE"
+    ],
+    [
+      10,
+      5,
+      0,
+      6,
+      0,
+      "IMAGE"
+    ],
+    [
+      11,
+      6,
+      0,
+      7,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "1 - Pixelate",
+      "bounding": [
+        480,
+        320,
+        440,
+        910
+      ],
+      "color": "#335",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "2 - Palette and dither",
+      "bounding": [
+        1000,
+        320,
+        440,
+        910
+      ],
+      "color": "#353",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "3 - LCD grid",
+      "bounding": [
+        1520,
+        320,
+        440,
+        910
+      ],
+      "color": "#a33",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "frontendVersion": "1.55.17"
+  },
+  "version": 0.4
+}
