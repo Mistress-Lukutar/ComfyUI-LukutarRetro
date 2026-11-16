@@ -5,7 +5,7 @@
 [project]
 # Registry node name — immutable after the first publish.
 name = "lukutar-retro"
-version = "0.1.1"
+version = "0.2.0"
 description = "ComfyUI custom node pack: pixel-art and retro display filters (pixelization, palettes, dithering, CRT and analog artifacts)."
 authors = [{ name = "Mistress-Lukutar" }]
 readme = "README.md"

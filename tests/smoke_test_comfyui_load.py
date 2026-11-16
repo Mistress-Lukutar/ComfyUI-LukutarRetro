@@ -112,7 +112,7 @@ def main() -> None:
     finally:
         sys.path.remove(str(COMFYUI_ROOT))
 
-    assert getattr(pack, "__version__", None) == "0.1.1", (
+    assert getattr(pack, "__version__", None) == "0.2.0", (
         f"__version__ mismatch: {getattr(pack, '__version__', None)!r}"
     )
 
