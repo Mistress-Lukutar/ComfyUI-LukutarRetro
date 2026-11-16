@@ -77,7 +77,9 @@ class Pixelizer:
         if s == 1 and self.pre_blur <= 0:
             return frame.copy()
 
-        work = frame.copy()
+        # No copy needed unless blurring: every pooling path below only
+        # reads `work` (slicing / reductions all produce new arrays).
+        work = frame
 
         # Pre-blur
         if self.pre_blur > 0:
@@ -136,78 +138,50 @@ class Pixelizer:
             Reduced grid of shape ``(cells_h, cells_w, 3)`` with dominant colours.
         """
         n_cells = cells_h * cells_w
+        n_cols = s * s
 
         # Reshape to cell-pixel layout; swap axes so reshape groups pixels per cell
         small_grid = padded.reshape(cells_h, s, cells_w, s, 3)
-        flat = (
-            np.swapaxes(small_grid, 1, 2)
-            .reshape(n_cells, s * s, 3)
-            .astype(np.float64)
-        )
+        pixels = np.swapaxes(small_grid, 1, 2).reshape(n_cells, n_cols, 3)
 
-        # Per-channel bin values (16 levels: value >> 4)
-        bb = np.floor(flat[:, :, 0]).astype(np.int32) >> 4
-        gb = np.floor(flat[:, :, 1]).astype(np.int32) >> 4
-        rb = np.floor(flat[:, :, 2]).astype(np.int32) >> 4
+        # Per-channel bin values (16 levels: value >> 4), combined code.
+        bb = np.floor(pixels[:, :, 0]).astype(np.int32) >> 4
+        gb = np.floor(pixels[:, :, 1]).astype(np.int32) >> 4
+        rb = np.floor(pixels[:, :, 2]).astype(np.int32) >> 4
+        codes = (rb << 8) | (gb << 4) | bb  # (n_cells, n_cols) int32, max 4095
 
-        # Combined code for lexsort: rb*256 + gb*16 + bb
-        codes = (rb << 8) | (gb << 4) | bb  # int32, max value 4095
+        # Sort each cell's codes ascending (row-wise sort — no global
+        # lexsort over all pixels): equal codes become contiguous spans.
+        codes_sorted = np.sort(codes, axis=1)
+        change = np.empty((n_cells, n_cols), dtype=bool)
+        change[:, 0] = True
+        change[:, 1:] = codes_sorted[:, 1:] != codes_sorted[:, :-1]
 
-        ids = np.repeat(np.arange(n_cells), s * s)
-        codes_flat = codes.ravel()
+        # Run length at every element: end - start, where start is the last
+        # run boundary at or before j (running max) and end the next
+        # boundary after j (running min over the reversed row).
+        idx = np.arange(n_cols, dtype=np.int32)
+        start = np.maximum.accumulate(np.where(change, idx, -1), axis=1)
+        cand = np.where(change, idx, n_cols)
+        next_boundary = np.minimum.accumulate(cand[:, ::-1], axis=1)[:, ::-1]
+        run_len = np.empty_like(next_boundary)
+        run_len[:, :-1] = next_boundary[:, 1:]
+        run_len[:, -1] = n_cols
+        run_len -= start
 
-        # Flatten to (n_pixels, 3) so order indexes into the first axis directly
-        flat_raveled = flat.reshape(n_cells * s * s, 3)
+        # Winner per cell: max count, tie → lowest code. codes_sorted is
+        # ascending, so the first max-count run carries the lowest code —
+        # argmax returns exactly that position.
+        max_count = run_len.max(axis=1)
+        winner_pos = np.argmax(run_len == max_count[:, None], axis=1)
+        rows = np.arange(n_cells)
+        winner_code = codes_sorted[rows, winner_pos]
 
-        # Sort by (cell_id, code) — lexsort: secondary key first
-        order = np.lexsort((codes_flat, ids))
-        ids_sorted = ids[order]
-        codes_sorted = codes_flat[order]
-        pixels_sorted = flat_raveled[order]  # float64, shape (n_pixels, 3)
-
-        # Cumulative sums for segmented-sum computation
-        cumsum = np.cumsum(pixels_sorted, axis=0)
-
-        # Find run boundaries (where cell_id or code changes)
-        diff_ids = np.diff(ids_sorted)
-        diff_codes = np.diff(codes_sorted)
-        boundary = (diff_ids != 0) | (diff_codes != 0)
-        run_end = np.append(np.where(boundary)[0], len(ids_sorted) - 1)
-        run_start = np.concatenate([[0], run_end[:-1] + 1])
-        run_count = run_end - run_start + 1
-
-        # Segment sums via cumsum (handle index-0 prefix carefully)
-        n_runs = len(run_end)
-        segment_sums = np.zeros((n_runs, 3), dtype=np.float64)
-        for ch in range(3):
-            mask_pos = run_start > 0
-            segment_sums[mask_pos, ch] = (
-                cumsum[run_end[mask_pos], ch] - cumsum[run_start[mask_pos] - 1, ch]
-            )
-            segment_sums[~mask_pos, ch] = cumsum[run_end[~mask_pos], ch]
-
-        # Find best run per cell: max count, tie → lowest code
-        best_count = np.zeros(n_cells, dtype=np.int32)
-        best_sum = np.zeros((n_cells, 3), dtype=np.float64)
-        best_code = np.full(n_cells, np.iinfo(np.int32).max, dtype=np.int32)
-
-        for r in range(n_runs):
-            pos = run_start[r]
-            cell = ids_sorted[pos]
-            code_v = codes_sorted[pos]
-            cnt = run_count[r]
-
-            if cnt > best_count[cell]:
-                best_count[cell] = cnt
-                best_sum[cell] = segment_sums[r]
-                best_code[cell] = code_v
-            elif cnt == best_count[cell] and code_v < best_code[cell]:
-                best_sum[cell] = segment_sums[r]
-                best_code[cell] = code_v
-
-        # Centroids = sum / count (only for cells with runs)
-        centroids = np.zeros((n_cells, 3), dtype=np.float64)
-        mask = best_count > 0
-        centroids[mask] = best_sum[mask] / best_count[mask][:, None]
+        # Winning centroid = mean of the actual pixels carrying the winning
+        # code in that cell. Mask-multiply keeps float32 values exact; the
+        # reduction accumulates in float64.
+        mask = codes == winner_code[:, None]
+        sums = (pixels * mask[:, :, np.newaxis]).sum(axis=1, dtype=np.float64)
+        centroids = sums / max_count[:, None]
 
         return centroids.reshape(cells_h, cells_w, 3)
