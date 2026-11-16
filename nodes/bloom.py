@@ -94,6 +94,10 @@ class BloomNode:
                     },
                 ),
             },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     def apply_bloom(
@@ -104,6 +108,8 @@ class BloomNode:
         intensity: float = 0.5,
         blend: str = BLEND_SCREEN,
         show_preview: bool = True,
+        prompt: dict | None = None,
+        extra_pnginfo: dict | None = None,
     ) -> dict:
         '''Apply bloom/glow to a batch of frames.
 
@@ -114,6 +120,10 @@ class BloomNode:
             intensity: Bloom contribution multiplier in [0, 4].
             blend: Blend mode — one of BLOOM_BLENDS.
             show_preview: Whether to generate in-node preview images.
+            prompt: Executing prompt graph (hidden PROMPT input);
+                embedded into preview PNG metadata. Optional.
+            extra_pnginfo: Hidden EXTRA_PNGINFO input, the UI
+                workflow; embedded into preview PNG metadata. Optional.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -135,4 +145,9 @@ class BloomNode:
             intensity,
             blend,
         )
-        return build_output_payload(out, show_preview=show_preview)
+        return build_output_payload(
+            out,
+            show_preview=show_preview,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )

@@ -96,6 +96,10 @@ class LcdDotMatrixNode:
                     },
                 ),
             },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     def apply_dot_matrix(
@@ -106,6 +110,8 @@ class LcdDotMatrixNode:
         grid_dark: float = 0.6,
         shape: str = SHAPE_SQUARE,
         show_preview: bool = True,
+        prompt: dict | None = None,
+        extra_pnginfo: dict | None = None,
     ) -> dict:
         '''Apply a dot-matrix LCD overlay to a batch of frames.
 
@@ -122,6 +128,10 @@ class LcdDotMatrixNode:
                 0 = no darkening; 1 = fully dark gaps.
             shape: Dot shape — one of DOT_SHAPES.
             show_preview: Whether to generate in-node preview images.
+            prompt: Executing prompt graph (hidden PROMPT input);
+                embedded into preview PNG metadata. Optional.
+            extra_pnginfo: Hidden EXTRA_PNGINFO input, the UI
+                workflow; embedded into preview PNG metadata. Optional.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -143,4 +153,9 @@ class LcdDotMatrixNode:
             grid_dark,
             shape,
         )
-        return build_output_payload(out, show_preview=show_preview)
+        return build_output_payload(
+            out,
+            show_preview=show_preview,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )

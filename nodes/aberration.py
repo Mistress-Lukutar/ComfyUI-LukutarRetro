@@ -78,6 +78,10 @@ class ChromaticAberrationNode:
                     },
                 ),
             },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     def apply_aberration(
@@ -86,6 +90,8 @@ class ChromaticAberrationNode:
         amount: float = 2.0,
         mode: str = ABERRATION_RADIAL,
         show_preview: bool = True,
+        prompt: dict | None = None,
+        extra_pnginfo: dict | None = None,
     ) -> dict:
         '''Apply chromatic aberration to a batch of frames.
 
@@ -94,6 +100,10 @@ class ChromaticAberrationNode:
             amount: Displacement magnitude in pixels ([0, 20]).
             mode: Displacement mode — one of ABERRATION_MODES.
             show_preview: Whether to generate in-node preview images.
+            prompt: Executing prompt graph (hidden PROMPT input);
+                embedded into preview PNG metadata. Optional.
+            extra_pnginfo: Hidden EXTRA_PNGINFO input, the UI
+                workflow; embedded into preview PNG metadata. Optional.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -113,4 +123,9 @@ class ChromaticAberrationNode:
             amount,
             mode,
         )
-        return build_output_payload(out, show_preview=show_preview)
+        return build_output_payload(
+            out,
+            show_preview=show_preview,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )

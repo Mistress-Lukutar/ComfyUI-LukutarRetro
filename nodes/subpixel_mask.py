@@ -78,6 +78,10 @@ class SubpixelMaskNode:
                     },
                 ),
             },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     def apply_mask(
@@ -86,6 +90,8 @@ class SubpixelMaskNode:
         mask: str = MASK_APERTURE_GRILLE,
         pitch: int = 1,
         show_preview: bool = True,
+        prompt: dict | None = None,
+        extra_pnginfo: dict | None = None,
     ) -> dict:
         '''Apply a phosphor-mask pattern to a batch of frames.
 
@@ -94,6 +100,10 @@ class SubpixelMaskNode:
             mask: Phosphor-mask type — one of MASK_TYPES.
             pitch: Stripe width in pixels (>= 1).
             show_preview: Whether to generate in-node preview images.
+            prompt: Executing prompt graph (hidden PROMPT input);
+                embedded into preview PNG metadata. Optional.
+            extra_pnginfo: Hidden EXTRA_PNGINFO input, the UI
+                workflow; embedded into preview PNG metadata. Optional.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -109,4 +119,9 @@ class SubpixelMaskNode:
             mask,
             pitch,
         )
-        return build_output_payload(out, show_preview=show_preview)
+        return build_output_payload(
+            out,
+            show_preview=show_preview,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )

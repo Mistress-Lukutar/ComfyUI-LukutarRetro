@@ -79,6 +79,10 @@ class ColorDepthNode:
                     },
                 ),
             },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     def posterize(
@@ -87,6 +91,8 @@ class ColorDepthNode:
         mode: str = "bits",
         value: int = 4,
         show_preview: bool = True,
+        prompt: dict | None = None,
+        extra_pnginfo: dict | None = None,
     ) -> dict:
         '''Posterize a batch of frames to the given colour depth.
 
@@ -95,6 +101,10 @@ class ColorDepthNode:
             mode: "bits" (2^value levels) or "levels" (exact value levels).
             value: Bit depth (1-8) when mode=bits; exact levels (2-64) when mode=levels.
             show_preview: Whether to generate in-node preview images.
+            prompt: Executing prompt graph (hidden PROMPT input);
+                embedded into preview PNG metadata. Optional.
+            extra_pnginfo: Hidden EXTRA_PNGINFO input, the UI
+                workflow; embedded into preview PNG metadata. Optional.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -126,4 +136,9 @@ class ColorDepthNode:
             value,
             levels,
         )
-        return build_output_payload(out, show_preview=show_preview)
+        return build_output_payload(
+            out,
+            show_preview=show_preview,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )

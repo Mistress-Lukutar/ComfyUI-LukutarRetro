@@ -89,6 +89,10 @@ class PixelizeNode:
                     },
                 ),
             },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     def pixelize(
@@ -98,6 +102,8 @@ class PixelizeNode:
         sampling: str = METHOD_MODE,
         pre_blur: float = 0.0,
         show_preview: bool = True,
+        prompt: dict | None = None,
+        extra_pnginfo: dict | None = None,
     ) -> dict:
         '''Process a batch of frames through the pixelizer.
 
@@ -107,6 +113,10 @@ class PixelizeNode:
             sampling: Pooling method from SAMPLE_METHODS.
             pre_blur: Gaussian blur sigma applied before downsampling (>= 0).
             show_preview: Whether to generate in-node preview images.
+            prompt: Executing prompt graph (hidden PROMPT input);
+                embedded into preview PNG metadata. Optional.
+            extra_pnginfo: Hidden EXTRA_PNGINFO input, the UI
+                workflow; embedded into preview PNG metadata. Optional.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -124,4 +134,9 @@ class PixelizeNode:
             sampling,
             pre_blur,
         )
-        return build_output_payload(out, show_preview=show_preview)
+        return build_output_payload(
+            out,
+            show_preview=show_preview,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )

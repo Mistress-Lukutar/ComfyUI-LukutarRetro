@@ -84,6 +84,10 @@ class CurvatureNode:
                     },
                 ),
             },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     def apply_curvature(
@@ -92,6 +96,8 @@ class CurvatureNode:
         amount: float = 0.15,
         edge_softness: float = 0.0,
         show_preview: bool = True,
+        prompt: dict | None = None,
+        extra_pnginfo: dict | None = None,
     ) -> dict:
         '''Apply barrel distortion to a batch of frames.
 
@@ -101,6 +107,10 @@ class CurvatureNode:
             edge_softness: Width of the smooth falloff into the black
                 border, in pixels ([0, 32]). Zero is a hard cut.
             show_preview: Whether to generate in-node preview images.
+            prompt: Executing prompt graph (hidden PROMPT input);
+                embedded into preview PNG metadata. Optional.
+            extra_pnginfo: Hidden EXTRA_PNGINFO input, the UI
+                workflow; embedded into preview PNG metadata. Optional.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE
@@ -127,4 +137,6 @@ class CurvatureNode:
             out,
             show_preview=show_preview,
             extra_result=(frames_to_mask_tensor(black_masks),),
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
         )

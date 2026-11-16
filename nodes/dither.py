@@ -121,6 +121,10 @@ class DitherNode:
                     },
                 ),
             },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     def dither(
@@ -132,6 +136,8 @@ class DitherNode:
         strength: float = 1.0,
         serpentine: bool = True,
         show_preview: bool = True,
+        prompt: dict | None = None,
+        extra_pnginfo: dict | None = None,
     ) -> dict:
         '''Dither a batch of frames to the given colour depth.
 
@@ -143,6 +149,10 @@ class DitherNode:
             strength: Dither amplitude in [0, 1].
             serpentine: Alternate scanline direction for diffusion methods.
             show_preview: Whether to generate in-node preview images.
+            prompt: Executing prompt graph (hidden PROMPT input);
+                embedded into preview PNG metadata. Optional.
+            extra_pnginfo: Hidden EXTRA_PNGINFO input, the UI
+                workflow; embedded into preview PNG metadata. Optional.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -178,4 +188,9 @@ class DitherNode:
             dither_method,
             strength,
         )
-        return build_output_payload(out, show_preview=show_preview)
+        return build_output_payload(
+            out,
+            show_preview=show_preview,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )

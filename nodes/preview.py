@@ -14,6 +14,7 @@ generated at all.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 
@@ -61,11 +62,19 @@ def _folder_paths() -> object | None:
 _folder_props = _folder_paths()
 
 
-def save_preview_files(frames: list[np.ndarray]) -> list[dict[str, str]]:
+def save_preview_files(
+    frames: list[np.ndarray],
+    prompt: dict | None = None,
+    extra_pnginfo: dict | None = None,
+) -> list[dict[str, str]]:
     """Save per-frame preview PNGs to the ComfyUI temp directory.
 
     Previews are saved at the frame's FULL resolution — the preview shows
     exactly the pixels the IMAGE output carries, with no downscaling.
+    When *prompt* / *extra_pnginfo* are provided (ComfyUI passes them as
+    hidden inputs), they are embedded into the PNG chunks the same way
+    ComfyUI's own SaveImage node does, so the saved preview can be
+    drag-and-dropped back onto the canvas to restore the workflow.
 
     NEVER raises — catches all exceptions, logs a warning, and returns [].
     When called outside the ComfyUI runtime (PIL or folder_paths missing),
@@ -73,6 +82,9 @@ def save_preview_files(frames: list[np.ndarray]) -> list[dict[str, str]]:
 
     Args:
         frames: List of HWC float32 [0, 255] RGB numpy arrays.
+        prompt: Executing prompt graph (hidden ``PROMPT`` input), or None.
+        extra_pnginfo: Extra workflow info (hidden ``EXTRA_PNGINFO``
+            input — carries the UI workflow), or None.
 
     Returns:
         List of ``{"filename", "subfolder", "type": "temp"}`` dicts.
@@ -95,6 +107,18 @@ def save_preview_files(frames: list[np.ndarray]) -> list[dict[str, str]]:
             )
         )
 
+        # Workflow metadata — same chunks as ComfyUI's SaveImage node.
+        metadata = None
+        if prompt is not None or extra_pnginfo is not None:
+            from PIL.PngImagePlugin import PngInfo
+
+            metadata = PngInfo()
+            if prompt is not None:
+                metadata.add_text("prompt", json.dumps(prompt))
+            if extra_pnginfo is not None:
+                for key, value in extra_pnginfo.items():
+                    metadata.add_text(key, json.dumps(value))
+
         results: list[dict[str, str]] = []
         for frame in frames:
             # Convert to uint8 for PIL — full resolution, no downscale.
@@ -105,6 +129,7 @@ def save_preview_files(frames: list[np.ndarray]) -> list[dict[str, str]]:
             pil_img.save(
                 os.path.join(full_output_dir, filename),
                 compress_level=1,
+                pnginfo=metadata,
             )
             results.append({
                 "filename": filename,
@@ -124,6 +149,8 @@ def build_output_payload(
     frames: list[np.ndarray],
     show_preview: bool = True,
     extra_result: tuple = (),
+    prompt: dict | None = None,
+    extra_pnginfo: dict | None = None,
 ) -> dict:
     """Build the uniform OUTPUT_NODE return payload.
 
@@ -134,12 +161,19 @@ def build_output_payload(
             any previously shown preview on the next execution.
         extra_result: Additional output tensors appended to the result
             tuple after the IMAGE (e.g. a MASK output).
+        prompt: Hidden ``PROMPT`` input from ComfyUI — embedded into the
+            preview PNGs as workflow metadata (optional).
+        extra_pnginfo: Hidden ``EXTRA_PNGINFO`` input from ComfyUI —
+            embedded into the preview PNGs as workflow metadata
+            (optional).
 
     Returns:
         Dict with ``"ui": {"images": [...]}`` and
         ``"result": (IMAGE_tensor, *extra_result)``.
     """
-    ui_images = save_preview_files(frames) if show_preview else []
+    ui_images = (
+        save_preview_files(frames, prompt, extra_pnginfo) if show_preview else []
+    )
     return {
         "ui": {"images": ui_images},
         "result": (frames_to_tensor(frames), *extra_result),

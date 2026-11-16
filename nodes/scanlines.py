@@ -108,6 +108,10 @@ class ScanlinesNode:
                     },
                 ),
             },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     def apply_scanlines(
@@ -119,6 +123,8 @@ class ScanlinesNode:
         offset: int = 0,
         profile: str = PROFILE_HARD,
         show_preview: bool = True,
+        prompt: dict | None = None,
+        extra_pnginfo: dict | None = None,
     ) -> dict:
         '''Apply CRT scanlines to a batch of frames.
 
@@ -130,6 +136,10 @@ class ScanlinesNode:
             offset: Row phase shift applied before the modulo operation.
             profile: Brightness profile — one of SCANLINE_PROFILES.
             show_preview: Whether to generate in-node preview images.
+            prompt: Executing prompt graph (hidden PROMPT input);
+                embedded into preview PNG metadata. Optional.
+            extra_pnginfo: Hidden EXTRA_PNGINFO input, the UI
+                workflow; embedded into preview PNG metadata. Optional.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -152,4 +162,9 @@ class ScanlinesNode:
             offset,
             profile,
         )
-        return build_output_payload(out, show_preview=show_preview)
+        return build_output_payload(
+            out,
+            show_preview=show_preview,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )

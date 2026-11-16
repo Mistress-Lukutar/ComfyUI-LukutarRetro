@@ -445,6 +445,11 @@ remains inside the node body. The pack remains fully functional without the
 web extension: in that case the preview images simply appear in the standard
 ComfyUI output section.
 
+The preview PNGs embed the same workflow metadata as ComfyUI's own Save
+Image node — the `prompt` (API graph) and `workflow` chunks, received via
+hidden `PROMPT` / `EXTRA_PNGINFO` inputs. A preview PNG can therefore be
+drag-and-dropped onto the canvas to restore the workflow that produced it.
+
 Nodes are `OUTPUT_NODE = True`, meaning they re-execute whenever their inputs
 change — same behaviour as the built-in Preview Image node. The `show_preview`
 widget value is declared in `INPUT_TYPES` so it serializes into workflows

@@ -83,6 +83,10 @@ class VignetteNode:
                     },
                 ),
             },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     def apply_vignette(
@@ -92,6 +96,8 @@ class VignetteNode:
         radius: float = 0.8,
         softness: float = 0.5,
         show_preview: bool = True,
+        prompt: dict | None = None,
+        extra_pnginfo: dict | None = None,
     ) -> dict:
         '''Apply a vignette effect to a batch of frames.
 
@@ -101,6 +107,10 @@ class VignetteNode:
             radius: Normalised distance at which darkening begins ([0, 1]).
             softness: Controls the steepness of the transition in [0, 1].
             show_preview: Whether to generate in-node preview images.
+            prompt: Executing prompt graph (hidden PROMPT input);
+                embedded into preview PNG metadata. Optional.
+            extra_pnginfo: Hidden EXTRA_PNGINFO input, the UI
+                workflow; embedded into preview PNG metadata. Optional.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -121,4 +131,9 @@ class VignetteNode:
             radius,
             softness,
         )
-        return build_output_payload(out, show_preview=show_preview)
+        return build_output_payload(
+            out,
+            show_preview=show_preview,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )

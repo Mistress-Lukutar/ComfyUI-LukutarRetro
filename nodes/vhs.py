@@ -117,6 +117,10 @@ class VhsNode:
                     },
                 ),
             },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     def apply_vhs(
@@ -129,6 +133,8 @@ class VhsNode:
         seed: int = 0,
         noise_mode: str = NOISE_COLOR,
         show_preview: bool = True,
+        prompt: dict | None = None,
+        extra_pnginfo: dict | None = None,
     ) -> dict:
         '''Apply VHS degradation to a batch of frames.
 
@@ -145,6 +151,10 @@ class VhsNode:
             seed: Random seed (0 = fresh randomness each run; >0 = deterministic).
             noise_mode: Noise colouring — one of NOISE_MODES.
             show_preview: Whether to generate in-node preview images.
+            prompt: Executing prompt graph (hidden PROMPT input);
+                embedded into preview PNG metadata. Optional.
+            extra_pnginfo: Hidden EXTRA_PNGINFO input, the UI
+                workflow; embedded into preview PNG metadata. Optional.
 
         Returns:
             OUTPUT_NODE payload dict whose "result" carries the IMAGE tensor.
@@ -168,4 +178,9 @@ class VhsNode:
             seed,
             noise_mode,
         )
-        return build_output_payload(out, show_preview=show_preview)
+        return build_output_payload(
+            out,
+            show_preview=show_preview,
+            prompt=prompt,
+            extra_pnginfo=extra_pnginfo,
+        )
