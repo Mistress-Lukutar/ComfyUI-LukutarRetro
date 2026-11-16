@@ -92,7 +92,7 @@ def vhs(
         raise ValueError(f"noise_mode must be one of {NOISE_MODES}")
 
     h, w, _ = frame.shape
-    result = frame.astype(np.float64)
+    result = frame.astype(np.float32)  # copy — stages below may be skipped
 
     # --- rng ---
     rng = np.random.default_rng(seed if seed > 0 else None)
@@ -109,16 +109,13 @@ def vhs(
         u = yuv[:, :, 1]
         v = yuv[:, :, 2]
 
-        blurred_u = cv2.blur(u.astype(np.float64), (k, 1))
-        blurred_v = cv2.blur(v.astype(np.float64), (k, 1))
+        blurred_u = cv2.blur(u, (k, 1))
+        blurred_v = cv2.blur(v, (k, 1))
 
         b = chroma_bleed
-        u_blended = u * (1 - b) + blurred_u * b
-        v_blended = v * (1 - b) + blurred_v * b
-
-        yuv[:, :, 1] = u_blended.astype(np.float32)
-        yuv[:, :, 2] = v_blended.astype(np.float32)
-        result = cv2.cvtColor(yuv, cv2.COLOR_YUV2RGB).astype(np.float64)
+        yuv[:, :, 1] = u * (1 - b) + blurred_u * b
+        yuv[:, :, 2] = v * (1 - b) + blurred_v * b
+        result = cv2.cvtColor(yuv, cv2.COLOR_YUV2RGB).astype(np.float32, copy=False)
 
     # --- stage b: jitter ---
     if jitter > 0:
@@ -129,15 +126,16 @@ def vhs(
             idx_expanded = np.broadcast_to(idx[:, :, np.newaxis], (h, w, 3))
             result = np.take_along_axis(result, idx_expanded, axis=1)
 
-    # --- stage c: noise ---
+    # --- stage c: noise (generated in float64 — Generator.normal has no
+    # float32 path — and cast once on the way in) ---
     if noise > 0:
         sigma = noise * 40.0
         if noise_mode == NOISE_MONO:
-            noise_plane = rng.normal(0, sigma, (h, w))
-            result = result + noise_plane[:, :, np.newaxis]
+            noise_plane = rng.normal(0, sigma, (h, w)).astype(np.float32)
+            result += noise_plane[:, :, np.newaxis]
         else:  # NOISE_COLOR
-            noise_planes = rng.normal(0, sigma, (h, w, 3))
-            result = result + noise_planes
+            noise_planes = rng.normal(0, sigma, (h, w, 3)).astype(np.float32)
+            result += noise_planes
 
     # --- stage d: band ---
     if band > 0:
@@ -146,9 +144,9 @@ def vhs(
         row_indices = np.arange(h, dtype=np.float64)
         g = np.exp(-((row_indices - pos) / max(bh, 1)) ** 2)
         factor = 1.0 + band * 0.3 * g
-        result = result * factor[:, np.newaxis, np.newaxis]
+        result *= factor.astype(np.float32)[:, np.newaxis, np.newaxis]
 
-    return np.clip(result, 0, 255).astype(np.float32)
+    return np.clip(result, 0, 255).astype(np.float32, copy=False)
 
 
 # ---------------------------------------------------------------------------
@@ -198,33 +196,29 @@ def lcd_dot_matrix(
         raise ValueError(f"shape must be one of {DOT_SHAPES}")
 
     h, w, _ = frame.shape
+    cs = cell_size
 
-    # Local fractional coords within each cell
-    col_mod = np.arange(w, dtype=np.float64) % cell_size  # (W,)
-    row_mod = np.arange(h, dtype=np.float64) % cell_size  # (H,)
-    fx = (col_mod[np.newaxis, :] + 0.5) / cell_size  # (1, W) → (H, W) via broadcast
-    fy = (row_mod[:, np.newaxis] + 0.5) / cell_size  # (H, 1)
-
-    factor_map = np.ones((h, w), dtype=np.float64)
+    # The factor map is periodic in both axes with period cell_size:
+    # pixel (r, c) has fractional coords ((r % cs) + 0.5) / cs and
+    # ((c % cs) + 0.5) / cs. Build one (cs, cs) tile and repeat it —
+    # exact and independent of frame size.
+    g = (np.arange(cs, dtype=np.float64) + 0.5) / cs  # (cs,)
 
     if shape == SHAPE_SQUARE:
         half_gap = gap_ratio / 2.0
-        inside = (
-            (fx >= half_gap) & (fx <= 1.0 - half_gap)
-            & (fy >= half_gap) & (fy <= 1.0 - half_gap)
-        )
-        factor_map[inside] = 1.0
-        factor_map[~inside] = 1.0 - grid_dark
-
+        col_inside = (g >= half_gap) & (g <= 1.0 - half_gap)
+        row_inside = (g >= half_gap) & (g <= 1.0 - half_gap)
+        inside_tile = col_inside[np.newaxis, :] & row_inside[:, np.newaxis]
     else:  # SHAPE_ROUND
-        # Normalised coords centred at 0, range [-1, 1]
-        nx = 2 * (fx - 0.5)
-        ny = 2 * (fy - 0.5)
-        radius_sq = nx * nx + ny * ny
+        nx = 2 * (g[np.newaxis, :] - 0.5)  # (1, cs)
+        ny = 2 * (g[:, np.newaxis] - 0.5)  # (cs, 1)
         threshold = 1.0 - gap_ratio
-        inside = radius_sq <= (threshold ** 2)
-        factor_map[inside] = 1.0
-        factor_map[~inside] = 1.0 - grid_dark
+        inside_tile = (nx * nx + ny * ny) <= threshold ** 2
 
-    result = frame.astype(np.float64) * factor_map[:, :, np.newaxis]
-    return np.clip(result, 0, 255).astype(np.float32)
+    dark = 1.0 - grid_dark
+    tile = np.where(inside_tile, 1.0, dark).astype(np.float32)  # (cs, cs)
+    reps = ((h + cs - 1) // cs, (w + cs - 1) // cs)
+    factor = np.tile(tile, reps)[:h, :w]  # (H, W) float32
+
+    result = frame * factor[:, :, np.newaxis]
+    return np.clip(result, 0, 255).astype(np.float32, copy=False)
