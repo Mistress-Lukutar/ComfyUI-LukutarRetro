@@ -366,6 +366,15 @@ never darkens.
 The *seed* parameter controls randomness: `0` = fresh random seed every run; > 0 =
 deterministic per frame for that seed value.
 
+Because the input is named `seed`, the ComfyUI frontend auto-attaches a
+`control_after_generate` widget to it. On nodes created with this pack the
+control defaults to **fixed** — with the default `seed = 0` every run gets
+fresh randomness, and the workflow state does not change between runs. If
+you switch the control to *randomize*, the seed (and the serialized
+workflow) changes on every execution — combined with the queue button's
+"Run (On change)" mode that re-queues the prompt forever. Workflows saved
+with an explicit control mode keep the saved value.
+
 ##### Inputs / Parameters
 
 | Name | Type | Default | Description |
@@ -421,10 +430,12 @@ Every filter node carries a `show_preview` BOOLEAN widget (default **on**).
 When on, the backend saves per-frame preview PNGs to the ComfyUI temp
 directory at the frame's FULL resolution — the preview shows exactly the
 pixels the `IMAGE` output carries, with no downscaling. The web extension
-(`web/js/retro_preview.js`) hides the v2 output section (`node.hideOutputImages = true`)
-and feeds `/view` URLs of the temp files into `node.imgs` on execution, so
-right-click **Open Image / Copy Image / Save Image** works against the real
-temp files.
+(`web/js/retro_preview.js`) feeds `/view` URLs of the temp files into
+`node.imgs` on execution, so right-click **Open Image / Copy Image /
+Save Image** works against the real temp files. The v2 (Vue node renderer)
+output section is left visible — under that renderer it is the only surface
+that can show the executed result, because the litegraph draw-background
+preview path does not run there.
 
 When `show_preview` is toggled off, the backend emits no preview images at
 all (no temp PNGs are written), and the next execution clears the previous

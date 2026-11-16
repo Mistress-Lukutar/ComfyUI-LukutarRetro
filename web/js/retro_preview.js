@@ -1,16 +1,16 @@
 /**
  * File:   retro_preview.js
- * Brief:  Retro filter nodes — hide the v2 output section and feed
- *         in-node previews via /view URLs on execution.
+ * Brief:  Retro filter nodes — in-node previews via /view URLs, seed
+ *         control default, and seed-loop guard for run-on-change mode.
  * Author: Mistress-Lukutar
  * Date:   2026-11-14
- * Version: v0.1.0
+ * Version: v0.1.1
  *
  * Contract:
- * - `node.hideOutputImages = true` keeps the v2 output section hidden.
- *   The v2 output display prefers live preview frames over executed
- *   outputs, so rendering the section would show the same picture a
- *   second time below the preview.
+ * - The v2 output section is NOT hidden: under the Vue node renderer
+ *   (Comfy.VueNodes.Enabled) the litegraph draw-background handler never
+ *   runs, so the output section is the ONLY surface that can show the
+ *   executed result. Hiding it meant no preview at all in v2 nodes.
  * - `node.imgs` is fed with /view URLs of the temp files on
  *   `onExecuted`, which is what the right-click menu (Open Image /
  *   Copy Image / Save Image) is built from. Open and Save then work
@@ -18,7 +18,7 @@
  *   preview blob.
  * - The `show_preview` BOOLEAN widget on each node controls whether
  *   previews exist at all: the backend emits NO ui images when it is
- *   off, so nothing re-appears from the output store. This extension
+ *   off, so nothing appears from the output store. This extension
  *   additionally clears `node.imgs` and removes the core's
  *   `$$canvas-image-preview` DOM widget on the next execution — the
  *   core's async preview loader (`useNodeImage().showPreview()`, run
@@ -26,6 +26,14 @@
  *   `node.imgs` from the previous execution's output store after our
  *   synchronous clear. When on (default), the backend emits temp image
  *   refs and this extension maps them to /view URLs for rendering.
+ * - RetroVHS seed guard: the frontend auto-attaches a
+ *   `control_after_generate` widget to every INT widget named
+ *   "seed", defaulting to "randomize". With the workflow run mode
+ *   "Run on Change" that is an infinite execution loop: each run
+ *   randomizes the seed, the serialized workflow differs, the
+ *   frontend re-queues. New RetroVHS nodes therefore default to
+ *   "fixed" (seed semantics: 0 = fresh randomness every run anyway).
+ *   Saved workflows keep whatever the user saved.
  *
  * Served at /extensions/<pack>/js/retro_preview.js, hence the THREE
  * parent hops to reach /scripts/app.js.
@@ -80,11 +88,19 @@ app.registerExtension({
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (!PREVIEW_NODES.has(nodeData.name)) return;
 
-    // Hide the v2 output section for these nodes.
     const originalNodeCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
       const result = originalNodeCreated?.apply(this, arguments);
-      this.hideOutputImages = true;
+
+      // RetroVHS seed guard — see the header contract. onConfigure runs
+      // AFTER onNodeCreated, so workflows that saved an explicit
+      // control mode keep the user's choice.
+      if (nodeData.name === "RetroVHS") {
+        const control = this.widgets?.find(
+          (w) => w.name === "control_after_generate",
+        );
+        if (control && control.value === "randomize") control.value = "fixed";
+      }
       return result;
     };
 
