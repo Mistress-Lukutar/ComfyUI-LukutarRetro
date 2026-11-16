@@ -228,9 +228,11 @@ class PaletteQuantizer:
         size = size_map[self.dither]
         amp = self.amplitude or 1.0
 
-        m = bayer_matrix(size).astype(np.float64)
+        # float32 throughout — the LUT index below truncates to uint8, so
+        # the 24-bit mantissa is far more precision than the path consumes.
+        m = bayer_matrix(size).astype(np.float32)
         m_norm = (m + 0.5) / (size * size)
-        bias = (m_norm - 0.5) * amp * self.strength
+        bias = (m_norm - 0.5) * np.float32(amp * self.strength)
 
         h, w, _ = frame.shape
         bias_3d = bias[:, :, np.newaxis]
@@ -238,7 +240,7 @@ class PaletteQuantizer:
             bias_3d, (h // size + 1, w // size + 1, 1)
         )[:h, :w, :]
 
-        biased = np.clip(frame.astype(np.float64) + tiled_bias, 0, 255)
+        biased = np.clip(frame + tiled_bias, 0, 255)
         idx = biased.astype(np.uint8) >> LUT_BIN_SHIFT
         return self._lut[idx[:, :, 0], idx[:, :, 1], idx[:, :, 2]].astype(
             np.float32

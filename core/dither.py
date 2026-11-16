@@ -146,15 +146,17 @@ def _dither_ordered(
     size_map = {DITHER_BAYER2: 2, DITHER_BAYER4: 4, DITHER_BAYER8: 8}
     size = size_map[method]
 
-    m = bayer_matrix(size).astype(np.float64)
+    # float32 throughout — quantisation rounds to `step` granularity
+    # (>= 1.0), far coarser than the float32 mantissa at these magnitudes.
+    m = bayer_matrix(size).astype(np.float32)
     m_norm = (m + 0.5) / (size * size)
-    bias = (m_norm - 0.5) * step * strength
+    bias = (m_norm - 0.5) * np.float32(step * strength)
 
     h, w, _ = frame.shape
     bias_3d = bias[:, :, np.newaxis]  # (size, size, 1) for correct tile broadcasting
     tiled_bias = np.tile(bias_3d, (h // size + 1, w // size + 1, 1))[:h, :w, :]
 
-    quantized = np.clip(frame.astype(np.float64) + tiled_bias, 0, 255)
+    quantized = np.clip(frame + tiled_bias, 0, 255)
     return _quantize_ordered(quantized, step)
 
 
