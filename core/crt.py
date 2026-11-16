@@ -117,8 +117,10 @@ def scanlines(
             soft_factor = 1.0 - strength * 0.5 * (1.0 + np.cos(cos_arg))
             mask[dark_mask] = soft_factor
 
-    result = frame.astype(np.float64) * mask[:, np.newaxis, np.newaxis]
-    return np.clip(result, 0, 255).astype(np.float32)
+    # The mask is per-row (H values); multiply in float32 — converting the
+    # full frame to float64 triples the memory traffic for no visible gain.
+    result = frame * mask.astype(np.float32)[:, np.newaxis, np.newaxis]
+    return np.clip(result, 0, 255).astype(np.float32, copy=False)
 
 
 # ---------------------------------------------------------------------------
@@ -154,72 +156,59 @@ def subpixel_mask(
         raise ValueError("pitch must be >= 1")
 
     h, w, _ = frame.shape
-    period = 3 * pitch
-
-    # Column index array for broadcasting
-    col_indices = np.arange(w, dtype=np.float64)
-    row_indices = np.arange(h, dtype=np.float64)
+    row_indices = np.arange(h)
 
     if mask == MASK_APERTURE_GRILLE:
-        pattern = _aperture_grille_pattern(h, w, pitch, period, col_indices)
+        pattern = _aperture_grille_pattern(w, pitch)
+        result = frame * pattern[np.newaxis, :, :]
 
     elif mask == MASK_SHADOW_MASK:
-        pattern = _shadow_mask_pattern(h, w, pitch, period, col_indices, row_indices)
+        even_pattern, odd_pattern = _shadow_mask_patterns(w, pitch)
+        result = frame * even_pattern[np.newaxis, :, :]
+        odd_rows = row_indices % 2 == 1
+        if odd_rows.any():
+            result[odd_rows] = frame[odd_rows] * odd_pattern
 
     else:  # MASK_SLOT_MASK
-        pattern = _slot_mask_pattern(h, w, pitch, period, col_indices, row_indices)
+        pattern = _aperture_grille_pattern(w, pitch)
+        result = frame * pattern[np.newaxis, :, :]
+        band_idx = row_indices // pitch
+        band = np.where(band_idx % 2 == 1, 0.5, 1.0).astype(np.float32)
+        result *= band[:, np.newaxis, np.newaxis]
 
-    # Apply pattern and compensate brightness
-    result = frame.astype(np.float64) * pattern
+    # Apply pattern and compensate brightness. All mask values are exact
+    # in float32 (0, 0.5, 1), so the whole pipeline stays float32.
     result *= MASK_BRIGHTNESS_COMPENSATION
-    return np.clip(result, 0, 255).astype(np.float32)
+    return np.clip(result, 0, 255).astype(np.float32, copy=False)
 
 
-def _aperture_grille_pattern(
-    h: int, w: int, pitch: int, period: int, col_indices: np.ndarray,
-) -> np.ndarray:
-    """Build an aperture-grille modulation pattern (H, W, 3)."""
-    stripe_idx = (col_indices // pitch) % 3  # (W,)
-    # Broadcast to (H, W, 3): channel c is 1 where stripe_idx == c
-    pattern = np.zeros((h, w, 3), dtype=np.float64)
-    for ch in range(3):
-        pattern[:, :, ch] = (stripe_idx[np.newaxis, :] == ch).astype(np.float64)
+def _aperture_grille_pattern(w: int, pitch: int) -> np.ndarray:
+    """Build an aperture-grille modulation pattern (W, 3) float32.
+
+    The pattern depends only on the column — the caller broadcasts it over
+    rows, so no (H, W, 3) intermediate is ever materialised.
+    """
+    stripe_idx = (np.arange(w) // pitch) % 3  # (W,) transmitting channel
+    pattern = np.zeros((w, 3), dtype=np.float32)
+    pattern[np.arange(w), stripe_idx] = 1.0
     return pattern
 
 
-def _shadow_mask_pattern(
-    h: int, w: int, pitch: int, period: int,
-    col_indices: np.ndarray, row_indices: np.ndarray,
-) -> np.ndarray:
-    """Build a shadow-mask (staggered triads) modulation pattern (H, W, 3)."""
+def _shadow_mask_patterns(w: int, pitch: int) -> tuple[np.ndarray, np.ndarray]:
+    """Build the even-row and odd-row shadow-mask patterns (W, 3) each.
+
+    The staggered-triad pattern depends only on the column and the row
+    parity, so two per-column patterns cover the whole frame.
+
+    Returns:
+        Tuple ``(even, odd)`` of (W, 3) float32 patterns.
+    """
     shift = (3 * pitch) // 2  # horizontal offset for odd rows
-    stripe_idx = (col_indices // pitch) % 3  # (W,)
-
-    pattern = np.zeros((h, w, 3), dtype=np.float64)
-    for ch in range(3):
-        even_rows = row_indices[:, np.newaxis] % 2 == 0  # (H, 1)
-        shifted = (col_indices - shift) // pitch % 3  # (W,)
-        pattern[:, :, ch] = np.where(
-            even_rows,
-            (stripe_idx[np.newaxis, :] == ch).astype(np.float64),
-            (shifted[np.newaxis, :] == ch).astype(np.float64),
-        )
-    return pattern
-
-
-def _slot_mask_pattern(
-    h: int, w: int, pitch: int, period: int,
-    col_indices: np.ndarray, row_indices: np.ndarray,
-) -> np.ndarray:
-    """Build a slot-mask (horizontal-slot gaps) modulation pattern (H, W, 3)."""
-    # Base aperture-grille pattern
-    base = _aperture_grille_pattern(h, w, pitch, period, col_indices)
-
-    # Every second band of height `pitch` is multiplied by 0.5
-    band_idx = row_indices // pitch  # (H,)
-    band_mask = np.where(band_idx % 2 == 1, 0.5, 1.0)[:, np.newaxis, np.newaxis]
-
-    return base * band_mask
+    even = _aperture_grille_pattern(w, pitch)
+    odd = np.zeros((w, 3), dtype=np.float32)
+    shifted_idx = ((np.arange(w) - shift) // pitch) % 3
+    odd[np.arange(w), shifted_idx] = 1.0
+    return even, odd
 
 
 # ---------------------------------------------------------------------------
@@ -265,8 +254,11 @@ def bloom(
 
     h, w, _ = frame.shape
 
-    # Soft bright mask from luma
-    luma = np.dot(frame[:, :, :3], LUMA_WEIGHTS)  # (H, W)
+    # Soft bright mask from luma. float32 weights keep the whole pipeline
+    # (including the Gaussian blur, which is ~2x slower on float64) in
+    # float32 — np.dot with a tuple of Python floats would upcast to f64.
+    luma_weights = np.asarray(LUMA_WEIGHTS, dtype=np.float32)
+    luma = np.dot(frame[:, :, :3], luma_weights)  # (H, W) float32
     thresh_px = threshold * 255.0
     denom = max(255.0 - thresh_px, 1.0)
     m = np.clip((luma - thresh_px) / denom, 0, 1)
@@ -282,11 +274,11 @@ def bloom(
 
     if blend == BLEND_SCREEN:
         # out = 255 - (255 - frame) * (255 - glow) / 255
-        result = 255.0 - (255.0 - frame.astype(np.float64)) * (255.0 - glow) / 255.0
+        result = 255.0 - (255.0 - frame) * (255.0 - glow) / 255.0
     else:  # BLEND_ADD
-        result = frame.astype(np.float64) + glow
+        result = frame + glow
 
-    return np.clip(result, 0, 255).astype(np.float32)
+    return np.clip(result, 0, 255).astype(np.float32, copy=False)
 
 
 # ---------------------------------------------------------------------------
@@ -326,100 +318,80 @@ def chromatic_aberration(
         return frame.copy()
 
     h, w, _ = frame.shape
-    result = np.zeros((h, w, 3), dtype=np.float64)
 
     if mode == ABERRATION_LINEAR:
-        # Linear: R at (x - amount, y), B at (x + amount, y), G identity.
-        # Red fringe on the left edge, blue on the right.
-        maps_linear = _build_linear_maps(h, w, amount)
-        for ch in range(3):
-            result[:, :, ch] = cv2.remap(
-                frame[:, :, ch],
-                maps_linear[ch][0].astype(np.float32),
-                maps_linear[ch][1].astype(np.float32),
-                interpolation=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_REFLECT,
-            )
-
+        (map_x_r, map_y_r), (map_x_b, map_y_b) = _build_linear_maps(h, w, amount)
     else:  # ABERRATION_RADIAL
         cx = (w - 1) / 2.0
         cy = (h - 1) / 2.0
-        maps_radial = _build_radial_maps(h, w, amount, cx, cy)
-        for ch in range(3):
-            result[:, :, ch] = cv2.remap(
-                frame[:, :, ch],
-                maps_radial[ch][0].astype(np.float32),
-                maps_radial[ch][1].astype(np.float32),
-                interpolation=cv2.INTER_LINEAR,
-                borderMode=cv2.BORDER_REFLECT,
-            )
+        (map_x_r, map_y_r), (map_x_b, map_y_b) = _build_radial_maps(
+            h, w, amount, cx, cy,
+        )
 
-    return np.clip(result, 0, 255).astype(np.float32)
+    # Green stays at its original position; only R and B are resampled.
+    # Two full-frame remaps on the contiguous HWC frame (green simply kept)
+    # are several times faster than per-channel remaps on non-contiguous
+    # channel views — cv2 pays once per call, and the output stays float32.
+    result = frame.copy()
+    result[:, :, 0] = cv2.remap(
+        frame, map_x_r, map_y_r,
+        interpolation=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REFLECT,
+    )[:, :, 0]
+    result[:, :, 2] = cv2.remap(
+        frame, map_x_b, map_y_b,
+        interpolation=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REFLECT,
+    )[:, :, 2]
 
+    return np.clip(result, 0, 255).astype(np.float32, copy=False)
 
 def _build_linear_maps(
     h: int, w: int, amount: float,
-) -> list[tuple[np.ndarray, np.ndarray]]:
+) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
     """Build remap maps for linear chromatic aberration.
 
-    Returns a list of (map_x, map_y) tuples for R, G, B channels.
+    Returns:
+        Two (map_x, map_y) float32 tuples — red sampled at ``(x - amount,
+        y)`` and blue at ``(x + amount, y)``.
     """
-    x = np.arange(w, dtype=np.float64)
-    y = np.arange(h, dtype=np.float64)
+    x = np.arange(w, dtype=np.float32)
+    y = np.arange(h, dtype=np.float32)
     xx, yy = np.meshgrid(x, y)
 
-    maps = []
     # Red: sampled at (x - amount, y) → red content shifts right,
     # red fringe on the right edge (blue on the left)
-    map_x_r = xx - amount
-    map_y_r = yy.copy()
-    maps.append((map_x_r, map_y_r))
-
-    # Green: identity
-    maps.append((xx.copy(), yy.copy()))
-
-    # Blue: sampled at (x + amount, y) → blue content shifts left
-    map_x_b = xx + amount
-    map_y_b = yy.copy()
-    maps.append((map_x_b, map_y_b))
-
-    return maps
+    return (xx - amount, yy), (xx + amount, yy)
 
 
 def _build_radial_maps(
     h: int, w: int, amount: float, cx: float, cy: float,
-) -> list[tuple[np.ndarray, np.ndarray]]:
+) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]:
     """Build remap maps for radial chromatic aberration.
 
-    Returns a list of (map_x, map_y) tuples for R, G, B channels.
-    Sampling red outward contracts it toward the center (red displaced
-    inward, blue expanded outward).
+    Returns:
+        Two (map_x, map_y) float32 tuples — red sampled outward
+        (contracted toward the center) and blue sampled inward
+        (expanded outward).
     """
-    x = np.arange(w, dtype=np.float64)
-    y = np.arange(h, dtype=np.float64)
+    x = np.arange(w, dtype=np.float32)
+    y = np.arange(h, dtype=np.float32)
     xx, yy = np.meshgrid(x, y)
 
-    # Direction vectors from center
+    # Unit direction vectors from center
     u_x = xx - cx
     u_y = yy - cy
     dist = np.sqrt(u_x * u_x + u_y * u_y)
-    dist = np.maximum(dist, 1e-6)
+    dist = np.maximum(dist, np.float32(1e-6))
+    u_x /= dist
+    u_y /= dist
 
-    maps = []
+    off = np.float32(amount)
     # Red: sampled outward → contracted toward center (red displaced inward)
-    map_x_r = xx + (u_x / dist) * amount
-    map_y_r = yy + (u_y / dist) * amount
-    maps.append((map_x_r, map_y_r))
-
-    # Green: identity
-    maps.append((xx.copy(), yy.copy()))
-
+    map_r = (xx + u_x * off, yy + u_y * off)
     # Blue: sampled inward → expanded outward (blue displaced outward)
-    map_x_b = xx - (u_x / dist) * amount
-    map_y_b = yy - (u_y / dist) * amount
-    maps.append((map_x_b, map_y_b))
-
-    return maps
+    map_b = (xx - u_x * off, yy - u_y * off)
+    return map_r, map_b
 
 
 # ---------------------------------------------------------------------------
@@ -481,8 +453,11 @@ def curvature(
     cx = (w - 1) / 2.0
     cy = (h - 1) / 2.0
 
-    x = np.arange(w, dtype=np.float64)
-    y = np.arange(h, dtype=np.float64)
+    # Map arithmetic in float32: coordinates stay well inside the 24-bit
+    # mantissa, and remap wants float32 maps anyway — float64 intermediates
+    # would double the memory traffic for no visible precision gain.
+    x = np.arange(w, dtype=np.float32)
+    y = np.arange(h, dtype=np.float32)
     xx, yy = np.meshgrid(x, y)
 
     # Normalized coordinates
@@ -500,26 +475,25 @@ def curvature(
     # Clamped border extension: real (edge-smeared) content under the
     # feather ramp instead of instant black. At softness = 0 the alpha
     # below reproduces the constant-border behaviour exactly, so the
-    # border mode is safe to keep clamped in both cases.
-    result = np.zeros((h, w, 3), dtype=np.float64)
-    for ch in range(3):
-        result[:, :, ch] = cv2.remap(
-            frame[:, :, ch],
-            src_x.astype(np.float32),
-            src_y.astype(np.float32),
-            interpolation=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_REPLICATE,
-        )
+    # border mode is safe to keep clamped in both cases. One remap call
+    # on the 3-channel frame instead of three per-channel calls.
+    result = cv2.remap(
+        frame,
+        src_x,
+        src_y,
+        interpolation=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
 
     # Border alpha: total valid content weight at each sample — the hard
     # 1 px bilinear ramp, or a smoothstep widened to edge_softness px.
     alpha = _edge_alpha(src_x, w, edge_softness) * _edge_alpha(src_y, h, edge_softness)
-    result *= alpha[:, :, np.newaxis]
+    result = result * alpha[:, :, np.newaxis]
 
     # Blackened-pixel mask: 1 - alpha is the blackening fraction.
     mask = (1.0 - alpha).astype(np.float32)
 
-    return np.clip(result, 0, 255).astype(np.float32), mask
+    return np.clip(result, 0, 255).astype(np.float32, copy=False), mask
 
 
 def _edge_alpha(src: np.ndarray, n: int, softness: float) -> np.ndarray:
@@ -611,6 +585,9 @@ def vignette(
     cy = (h - 1) / 2.0
     half_diag = np.sqrt(cx * cx + cy * cy)
 
+    # Factor map in float64: with radius close to 1 the transition divisor
+    # shrinks towards 1e-6 and would amplify float32 noise in `d` into a
+    # visible darkening of pixels that must stay untouched.
     x = np.arange(w, dtype=np.float64)
     y = np.arange(h, dtype=np.float64)
     xx, yy = np.meshgrid(x, y)
@@ -623,7 +600,7 @@ def vignette(
 
     # Factor: darkening exponent increases with softness
     exponent = 1.0 + softness * 4.0
-    factor = 1.0 - strength * (t ** exponent)
+    factor = (1.0 - strength * (t ** exponent)).astype(np.float32)
 
-    result = frame.astype(np.float64) * factor[:, :, np.newaxis]
-    return np.clip(result, 0, 255).astype(np.float32)
+    result = frame * factor[:, :, np.newaxis]
+    return np.clip(result, 0, 255).astype(np.float32, copy=False)
