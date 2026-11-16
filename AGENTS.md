@@ -89,7 +89,14 @@ dither nodes), `Lukutar/Retro/CRT` (atomic screen effects),
   `TestErrorDiffusionSpreads` in `tests/unit/test_quantize.py`).
 - Clamp the quantized value to `[0, 255]` inside diffusion loops —
   accumulated error can overshoot the outer levels and would otherwise
-  leak oversized residues into downstream pixels.
+  leak oversized residues into downstream pixels. In
+  `core/quantize.py::_quantize_diffusion` the running value must be
+  clamped BEFORE the palette match and the diffused error computed from
+  the clamped value: a palette can be unable to absorb error on a
+  channel (all dmg_4 greens are blue≈15), so an unclamped residual grows
+  without bound, saturates the LUT bin and collapses the output into
+  giant flat blobs (`TestPaletteDiffusionStability` in
+  `tests/unit/test_quantize.py`).
 - `folder_paths` is a TOP-LEVEL module of the ComfyUI root
   (`import folder_paths`), never `from comfy import folder_paths`.
   Temp files go through `folder_paths.get_save_image_path(...)` plus

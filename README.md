@@ -87,7 +87,11 @@ runs over plain Python lists with a sliding window of pending rows, roughly
 3-5x faster than the earlier numpy-scalar loop, but still seconds per
 megapixel). For ordered dithering, `dither_strength` scales the threshold
 amplitude by a self-calibrated mean CIELAB distance of the palette; for
-diffusion methods it scales the error propagated to neighbours.
+diffusion methods it scales the error propagated to neighbours. Diffusion
+clamps the running value to `[0, 255]` before each palette match and
+propagates the error of the clamped value — palettes that cannot absorb
+error on some channel (e.g. the DMG greens all share blue ≈ 15) would
+otherwise accumulate unbounded residuals and collapse into flat blobs.
 
 **Serpentine mode.** When enabled, odd scanlines are processed right-to-left
 with mirrored kernel offsets — standard practice for reducing directional bias

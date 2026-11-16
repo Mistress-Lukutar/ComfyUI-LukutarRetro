@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from comfyui_lukutar_retro.core.dither import DIFFUSION_KERNELS
 from comfyui_lukutar_retro.core.palettes import get_palette
 from comfyui_lukutar_retro.core.quantize import (
+    LUT_BIN_SHIFT,
     PaletteQuantizer,
     make_palette_lut,
 )
@@ -273,3 +275,85 @@ class TestErrorDiffusionSpreads:
         ).process(frame)
         colors = np.unique(out.reshape(-1, 3), axis=0)
         assert colors.shape[0] == 2
+
+
+class TestPaletteDiffusionStability:
+    """Regression: palette diffusion must clamp the running value.
+
+    A palette can be unable to absorb error on a channel — all dmg_4 greens
+    are blue≈15, so blue error can never be matched away.  Without clamping
+    the running value to ``[0, 255]`` before the LUT match (and diffusing
+    the error of the clamped value) the residual grows without bound, the
+    LUT bin saturates and bright detail collapses into the surrounding dark
+    regions (giant flat blobs instead of a fine dither texture).
+    """
+
+    @staticmethod
+    def _textbook_diffusion(
+        frame: np.ndarray,
+        palette: np.ndarray,
+        method: str,
+        strength: float = 1.0,
+        serpentine: bool = True,
+    ) -> np.ndarray:
+        """Naive per-pixel error-diffusion reference (clamp → match → diffuse)."""
+        kernel = DIFFUSION_KERNELS[method]
+        lut = make_palette_lut(palette)
+        mirrored = tuple((-dx, dy, wt) for dx, dy, wt in kernel)
+        h, w, _ = frame.shape
+        work = frame.astype(np.float64).copy()
+        for y in range(h):
+            k = mirrored if (serpentine and y % 2 == 1) else kernel
+            xs = range(w - 1, -1, -1) if (serpentine and y % 2 == 1) else range(w)
+            for x in xs:
+                r, g, b = work[y, x]
+                r = 0.0 if r < 0.0 else (255.0 if r > 255.0 else r)
+                g = 0.0 if g < 0.0 else (255.0 if g > 255.0 else g)
+                b = 0.0 if b < 0.0 else (255.0 if b > 255.0 else b)
+                m = lut[
+                    int(r) >> LUT_BIN_SHIFT,
+                    int(g) >> LUT_BIN_SHIFT,
+                    int(b) >> LUT_BIN_SHIFT,
+                ].astype(np.float64)
+                work[y, x] = m
+                er = (r - m[0]) * strength
+                eg = (g - m[1]) * strength
+                eb = (b - m[2]) * strength
+                for dx, dy, wt in k:
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < w and 0 <= ny < h:
+                        work[ny, nx, 0] += er * wt
+                        work[ny, nx, 1] += eg * wt
+                        work[ny, nx, 2] += eb * wt
+        return np.clip(work, 0, 255).astype(np.float32)
+
+    @pytest.mark.parametrize("method", ["floyd-steinberg", "atkinson"])
+    @pytest.mark.parametrize("serpentine", [True, False])
+    def test_matches_textbook_reference(
+        self, method: str, serpentine: bool,
+    ) -> None:
+        """Engine diffusion equals the clamp-then-match textbook pass."""
+        rng = np.random.default_rng(1234)
+        frame = rng.random((24, 18, 3)).astype(np.float32) * 255
+        q = PaletteQuantizer(
+            _DMG4, dither=method, strength=1.0, serpentine=serpentine,
+        )
+        expected = self._textbook_diffusion(
+            frame, _DMG4, method, serpentine=serpentine,
+        )
+        assert np.array_equal(q.process(frame), expected)
+
+    def test_preserves_bright_detail_on_degenerate_palette(self) -> None:
+        """Bright detail survives FS even though no palette colour can
+        absorb blue error."""
+        frame = np.full((48, 48, 3), 30.0, dtype=np.float32)
+        frame[16:32, 12:36] = (200.0, 150.0, 60.0)
+        out = PaletteQuantizer(
+            _DMG4, dither="floyd-steinberg", strength=1.0,
+        ).process(frame)
+        bright = [c.astype(np.float32) for c in _DMG4 if int(c.sum()) > 200]
+        region = out[16:32, 12:36].reshape(-1, 3)
+        hits = sum(
+            1 for px in region if any(np.allclose(px, c) for c in bright)
+        )
+        assert hits >= 0.5 * region.shape[0]

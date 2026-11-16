@@ -257,6 +257,15 @@ class PaletteQuantizer:
         For *serpentine=True* odd rows are scanned right-to-left and kernel
         x-offsets are mirrored.
 
+        The running value is clamped to ``[0, 255]`` before matching and the
+        diffused error is computed from the clamped value.  Unlike the
+        uniform-level diffusion in :mod:`core.dither` (whose quantiser spans
+        the full channel range and can always absorb error), a palette may
+        have no colour that can absorb error on some channel — e.g. all
+        ``dmg_4`` greens are blue≈15 — so an unclamped residual would grow
+        without bound, saturate the LUT bin and collapse the output into
+        giant flat blobs.
+
         Runs over plain Python lists with a sliding window of pending future
         rows and a flattened LUT (``list[int]`` rows) — error diffusion is
         inherently sequential and numpy scalar indexing is an order of
@@ -304,11 +313,19 @@ class PaletteQuantizer:
             for col in cols:
                 pixel = cur[col]
                 r, g, b = pixel
-                # Clamp to [0, 255] and truncate toward zero — identical to
-                # np.clip(pixel, 0, 255).astype(np.uint8) on the old path.
-                kr = 0 if r < 0.0 else (255 if r > 255.0 else int(r))
-                kg = 0 if g < 0.0 else (255 if g > 255.0 else int(g))
-                kb = 0 if b < 0.0 else (255 if b > 255.0 else int(b))
+                # Clamp the running value to [0, 255] BEFORE matching and
+                # compute the diffused error from the clamped value.  A
+                # palette may be unable to absorb error on a channel (all
+                # dmg_4 greens are blue≈15), so the accumulated residual
+                # would otherwise grow without bound — the LUT bin then
+                # saturates, every match collapses onto the same palette
+                # colour and the output turns into giant flat blobs.
+                # Matching and error must always describe the same value:
+                # clamp first, then match, then diffuse (clamp - matched).
+                r = 0.0 if r < 0.0 else (255.0 if r > 255.0 else r)
+                g = 0.0 if g < 0.0 else (255.0 if g > 255.0 else g)
+                b = 0.0 if b < 0.0 else (255.0 if b > 255.0 else b)
+                kr, kg, kb = int(r), int(g), int(b)
                 matched = lut[
                     ((kr >> LUT_BIN_SHIFT) << 10)
                     | ((kg >> LUT_BIN_SHIFT) << 5)
